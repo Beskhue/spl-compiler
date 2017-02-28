@@ -1,0 +1,56 @@
+name:                spl-compiler
+version:             0.1.0.0
+-- synopsis:
+-- description:
+homepage:            https://github.com/beskhue/spl-compiler#readme
+license:             MIT
+license-file:        LICENSE.md
+author:              Thomas Churchman
+maintainer:          thomas@kepow.org
+copyright:           2017 Thomas Churchman
+category:            Compiler
+build-type:          Simple
+extra-source-files:  README.md
+cabal-version:       >=1.10
+
+library
+  hs-source-dirs:      src
+  exposed-modules:     Lib
+                     , Data.DFA
+                     , Data.NFA
+                     , Text.Regex.Thompson
+  build-depends:       base >= 4.7 && < 5
+                     , containers
+                     , transformers
+                     , mtl
+  default-language:    Haskell2010
+
+executable spl-compiler-exe
+  hs-source-dirs:      app
+  main-is:             Main.hs
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  build-depends:       base
+                     , spl-compiler
+  default-language:    Haskell2010
+
+test-suite spl-compiler-test
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      test
+  main-is:             Test.hs
+  other-modules:       Text.Regex.ThompsonTest
+  build-depends:       base
+                     , setenv
+                     , tasty >= 0.7
+                     , tasty-smallcheck
+                     , tasty-quickcheck
+                     , tasty-hunit
+                     , tasty-hspec
+                     , tasty-html
+                     , tasty-auto
+                     , spl-compiler
+  ghc-options:         -threaded -rtsopts -with-rtsopts=-N
+  default-language:    Haskell2010
+
+source-repository head
+  type:     git
+  location: https://github.com/beskhue/spl-compiler
