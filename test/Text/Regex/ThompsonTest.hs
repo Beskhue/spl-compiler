@@ -96,7 +96,7 @@ spec_Regex = do
                 Regex.evaluate a "молоко" `shouldBe` True
                 Regex.evaluate a "moloko" `shouldBe` False
     describe "Regex.longestMatch" $ do
-        it "recognizes the longest match is not the entire string" $ do
+        it "recognizes the longest match is not necessarily the entire string" $ do
             let a = Regex.compile("(aaa)+") in do
                 Regex.longestMatch a "aaaaaaaa" `shouldBe` Just "aaaaaa"
                 Regex.longestMatch a "aa" `shouldBe` Nothing
