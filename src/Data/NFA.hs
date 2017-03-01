@@ -132,3 +132,11 @@ longestMatch nfa inputString = if length matches' > 0
     else Nothing
     where
         matches' = matches nfa inputString
+
+-- |Finds the shortest substring recognized by the NFA (the substrings expand to the right, i.e. they match "^regex")
+shortestMatch :: Eq a => NFA a -> String -> Maybe String
+shortestMatch nfa inputString = if length matches' > 0
+    then Just $ head matches'
+    else Nothing
+    where
+        matches' = matches nfa inputString

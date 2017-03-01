@@ -486,3 +486,7 @@ matches = NFA.matches
 -- |Finds the longest substring recognized by the (compiled) regex (the substrings expand to the right, i.e. they match "^regex")
 longestMatch :: CompiledRegex -> String -> Maybe String
 longestMatch = NFA.longestMatch
+
+-- |Finds the shortest substring recognized by the (compiled) regex (the substrings expand to the right, i.e. they match "^regex")
+shortestMatch :: CompiledRegex -> String -> Maybe String
+shortestMatch = NFA.shortestMatch

@@ -105,6 +105,20 @@ spec_Regex = do
                 Regex.longestMatch a "Hello world" `shouldBe` Just "Hello world"
                 Regex.longestMatch a "Hello wor" `shouldBe` Just "Hello"
                 Regex.longestMatch a "Hello world world world" `shouldBe` Just "Hello world world world"
+    describe "Regex.shortestMatch" $ do
+        it "recognizes the shortest match is not necessarily an empty string" $ do
+            let a = Regex.compile("(aaa)+") in do
+                Regex.shortestMatch a "aaaaaaaa" `shouldBe` Just "aaa"
+                Regex.shortestMatch a "aa" `shouldBe` Nothing
+        it "recognizes the shortest match in a complex regex" $ do
+            let a = Regex.compile("Hello( world)*") in do
+                Regex.shortestMatch a "Hello world" `shouldBe` Just "Hello"
+                Regex.shortestMatch a "Hello wor" `shouldBe` Just "Hello"
+                Regex.shortestMatch a "Hello world world world" `shouldBe` Just "Hello"
+        it "recognizes the shortest match as the empty string" $ do
+            let a = Regex.compile("(a|b)*") in do
+                Regex.shortestMatch a "The quick brown fox jumped over the lazy dog" `shouldBe` Just ""
+                Regex.shortestMatch a "" `shouldBe` Just ""
     describe "Regex.matches" $ do
         it "finds no matches if there are none" $ do
             let a = Regex.compile("a+b+") in do
