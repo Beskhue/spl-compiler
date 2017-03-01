@@ -83,6 +83,18 @@ spec_Regex = do
                 Regex.evaluate a "^" `shouldBe` True
                 Regex.evaluate a " " `shouldBe` True
                 Regex.evaluate a "\n" `shouldBe` True
+        it "recognizes lambda (empty word)" $ do
+            let a = Regex.compile("") in do
+                Regex.evaluate a "" `shouldBe` True
+                Regex.evaluate a "a" `shouldBe` False
+                Regex.evaluate a "abc" `shouldBe` False
+            let a = Regex.compile("()|()") in do
+                Regex.evaluate a "" `shouldBe` True
+                Regex.evaluate a "a" `shouldBe` False
+        it "handles non-ASCII characters" $ do
+            let a = Regex.compile("молоко") in do
+                Regex.evaluate a "молоко" `shouldBe` True
+                Regex.evaluate a "moloko" `shouldBe` False
     describe "Regex.longestMatch" $ do
         it "recognizes the longest match is not the entire string" $ do
             let a = Regex.compile("(aaa)+") in do

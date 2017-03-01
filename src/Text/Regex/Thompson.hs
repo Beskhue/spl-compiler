@@ -303,7 +303,13 @@ pSetItem = do
         _ -> return $ SetLiteral char -- <char>
 
 pLiteral :: ParseT Regex -- <char>
-pLiteral = liftM Literal pChar
+pLiteral = do
+    token <- getToken
+    case token of
+        TEOF -> return Lambda
+        TUnion -> return Lambda
+        TGroupClose -> return Lambda
+        _ -> liftM Literal pChar
 
 pChar :: ParseT Char -- <char>
 pChar = do
