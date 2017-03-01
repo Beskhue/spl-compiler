@@ -64,6 +64,25 @@ spec_Regex = do
                     all (== True) (map (Regex.evaluate a . (: "")) chars) `shouldBe` True
                     Regex.evaluate a "ab" `shouldBe` False
                     Regex.evaluate a "" `shouldBe` False
+        it "recognizes exactly the characters not in a negative character set" $ do
+            let a = Regex.compile("[^abch-lX-Zq0-9r]") in do
+                let chars = ['a', 'b', 'c'] ++ ['h' .. 'l'] ++ ['X' .. 'Z'] ++ ['q'] ++ ['0' .. '9'] ++ ['r'] in do
+                    all (== True) (map (Regex.evaluate a . (: "")) chars) `shouldBe` False
+                    Regex.evaluate a "A" `shouldBe` True
+                    Regex.evaluate a "ab" `shouldBe` False
+                    Regex.evaluate a "" `shouldBe` False
+        it "recognizes all characters for ." $ do
+            let a = Regex.compile("...") in do
+                Regex.evaluate a "a-" `shouldBe` False
+                Regex.evaluate a "a-0" `shouldBe` True
+                Regex.evaluate a "a-0^" `shouldBe` False
+        it "recognizes everything for .*" $ do
+            let a = Regex.compile(".*") in do
+                Regex.evaluate a "" `shouldBe` True
+                Regex.evaluate a "abcdABCD01234" `shouldBe` True
+                Regex.evaluate a "^" `shouldBe` True
+                Regex.evaluate a " " `shouldBe` True
+                Regex.evaluate a "\n" `shouldBe` True
     describe "Regex.longestMatch" $ do
         it "recognizes the longest match is not the entire string" $ do
             let a = Regex.compile("(aaa)+") in do

@@ -30,6 +30,7 @@ import Data.Functor.Identity
 import Data.NFA as NFA
 
 data Regex = Lambda
+           | All
            | Literal Char
            | Union Regex Regex
            | Concat Regex Regex
@@ -37,6 +38,7 @@ data Regex = Lambda
            | Option Regex
            | Group Regex
            | Set SetItems
+           | NegSet SetItems
              deriving (Show, Eq)
 
 data SetItem = SetLiteral Char
@@ -48,6 +50,7 @@ type SetItems = [SetItem]
 -- |Define a function to print regexes in a familiar format
 printRegex :: Regex -> String
 printRegex Lambda = "λ"
+printRegex All = "."
 printRegex (Literal c) = [c]
 printRegex (Union r1 r2) = "(" ++ printRegex r1 ++ ")|(" ++ printRegex r2 ++ ")"
 printRegex (Concat r1 r2) = printRegex r1 ++ printRegex r2
@@ -55,6 +58,7 @@ printRegex (Star r) = "(" ++ printRegex r ++ ")*"
 printRegex (Option r) = "(" ++ printRegex r ++ ")?"
 printRegex (Group r) = "(" ++ printRegex r ++ ")"
 printRegex (Set setItems) = "[...]"
+printRegex (NegSet setItems) = "[^...]"
 
 {-
 instance Show Regex where
@@ -62,6 +66,7 @@ instance Show Regex where
 -}
 
 data Token = TUnion
+             | TAll
              | TStar
              | TPlus
              | TOption
@@ -69,6 +74,7 @@ data Token = TUnion
              | TGroupClose
              | TSetOpen
              | TSetClose
+             | TNegSet
              | TRangeDelimiter
              | TEscape
              | TChar Char
@@ -78,6 +84,7 @@ data Token = TUnion
 -- |Tokenize a character
 token :: Char -> Token
 token '|'   = TUnion
+token '.'   = TAll
 token '*'   = TStar
 token '+'   = TPlus
 token '?'   = TOption
@@ -85,6 +92,7 @@ token '('   = TGroupOpen
 token ')'   = TGroupClose
 token '['   = TSetOpen
 token ']'   = TSetClose
+token '^'   = TNegSet
 token '-'   = TRangeDelimiter
 token '\\'  = TEscape -- \
 token c     = TChar c
@@ -98,6 +106,7 @@ tokenToChar TGroupOpen = '('
 tokenToChar TGroupClose = ')'
 tokenToChar TSetOpen = '['
 tokenToChar TSetClose = ']'
+tokenToChar TNegSet = '^'
 tokenToChar TRangeDelimiter = '-'
 tokenToChar TEscape = '\\'
 tokenToChar (TChar c) = c
@@ -121,9 +130,11 @@ tokenize s = cleanupEscapes [token c | c <- s] ++ [TEOF]
                             | <term>
     <term>              ::= <basic-regex> <term> | <basic-regex>
     <basic-regex>       ::= <base> '*' | <base> '+' | <base> '?' | <base>
-    <base>              ::= <group> | <set> | <char>
+    <base>              ::= <group> | <set> | '.' | <char>
     <group>             ::= '(' <regex> ')'
     <set>               ::= '[' <set-items> ']'
+    <pos-set>           ::= <set-items>
+    <neg-set>           ::= '^' <set-items>
     <set-items>         ::= <set-item> | <set-item> <set-items>
     <set-item>          ::= <char> '-' <char> | <char>
 -}
@@ -239,6 +250,9 @@ pBase = do
     case token of
         TGroupOpen -> pGroup
         TSetOpen -> pSet
+        TAll -> do
+            eat TAll
+            return All
         _ -> pLiteral
 
 pGroup :: ParseT Regex -- <group> -> '(' <regex> ')'
@@ -251,9 +265,17 @@ pGroup = do
 pSet :: ParseT Regex -- <set> -> '[' <set-items> ']'
 pSet = do
     eat TSetOpen
-    setItems <- pSetItems
-    eat TSetClose
-    return $ Set setItems
+    token <- getToken
+    case token of
+        TNegSet -> do
+            eat TNegSet
+            setItems <- pSetItems
+            eat TSetClose
+            return $ NegSet setItems
+        _ -> do
+            setItems <- pSetItems
+            eat TSetClose
+            return $ Set setItems
 
 pSetItems :: ParseT SetItems -- <set-items> ->
 pSetItems = pSetItems' 0
@@ -315,9 +337,39 @@ build (Literal c) = NFA.NFA
     [1]
 build (Union r1 r2) = buildUnion (build r1) (build r2)
 build (Concat r1 r2) = buildConcat (build r1) (build r2)
+build All = NFA.NFA
+    [0, 1]
+    [NFA.ConditionalTransition 0 (\c -> True) 1]
+    0
+    [1]
 build (Star r) = buildStar (build r)
 build (Option r) = buildOption (build r)
 build (Group r) = buildGroup (build r)
+build (Set setItems) = NFA.NFA
+    [0, 1]
+    [NFA.ConditionalTransition 0 condition 1]
+    0
+    [1]
+        where
+            condition :: Char -> Bool
+            condition a = elem a $ concat [(
+                    case setItem of
+                        SetLiteral c -> [c]
+                        SetRange c1 c2 -> [c1 .. c2]
+                ) | setItem <- setItems]
+build (NegSet setItems) = NFA.NFA
+      [0, 1]
+      [NFA.ConditionalTransition 0 condition 1]
+      0
+      [1]
+          where
+              condition :: Char -> Bool
+              condition a = not $ elem a $ concat [(
+                      case setItem of
+                          SetLiteral c -> [c]
+                          SetRange c1 c2 -> [c1 .. c2]
+                  ) | setItem <- setItems]
+{-
 build (Set setItems) = NFA.NFA
     [0, 1]
     (concat [setItemToTransition setItem | setItem <- setItems])
@@ -327,6 +379,7 @@ build (Set setItems) = NFA.NFA
         setItemToTransition :: SetItem -> [NFA.Transition Int]
         setItemToTransition (SetLiteral c) = [NFA.Transition 0 c 1]
         setItemToTransition (SetRange c1 c2) = [NFA.Transition 0 c 1 | c <- [c1 .. c2]]
+-}
 
 buildUnion :: NFA.NFA Int -> NFA.NFA Int -> NFA.NFA Int
 buildUnion (NFA.NFA states1 trans1 init1 accs1) (NFA.NFA states2 trans2 init2 accs2) =
@@ -407,6 +460,7 @@ nfaIncrementIndices (NFA.NFA states trans init accs) inc = NFA.NFA
     [st + inc | st <- states]
     [case tran of
         NFA.Transition i1 c i2 -> NFA.Transition (i1 + inc) c (i2 + inc)
+        NFA.ConditionalTransition i1 c i2 -> NFA.ConditionalTransition (i1 + inc) c (i2 + inc)
         NFA.EmptyTransition i1 i2 -> NFA.EmptyTransition (i1 + inc) (i2 + inc)
             | tran <- trans]
     (init + inc)

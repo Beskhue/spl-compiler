@@ -32,15 +32,18 @@ data NFA a = NFA
                 [Transition a]
                 a
                 [a]
-                deriving (Eq, Show)
 
 {-|
   A transition is either a transition from one state to another given a char
   or a transition from one state to another given no input
+
+  1. A transition from one state to given a character
+  2. A transition from one state to another if the given character evaluates the function to true
+  3. A transition from one state to another given no input
 -}
 data Transition a = Transition a Char a
+                  | ConditionalTransition a (Char -> Bool) a
                   | EmptyTransition a a
-                    deriving (Eq, Show)
 
 -- |Test whether state 'state' is an accepting state in an NFA
 isAccepting :: Eq a => NFA a -> a -> Bool
@@ -62,6 +65,9 @@ validTransitionCondition :: Eq a => Transition a -> a -> Maybe Char -> Bool
 validTransitionCondition (Transition s1 char _) s1' (Just char') =
     (s1 == s1')
     && (char == char')
+validTransitionCondition (ConditionalTransition s1 f _) s1' (Just char ) =
+    (s1 == s1')
+    && f char
 validTransitionCondition (EmptyTransition s1 _) s1' Nothing = (s1 == s1')
 validTransitionCondition _ _ _ = False
 
@@ -72,6 +78,7 @@ getInitialState (NFA _ _ s _) = s
 -- |Get the post state of a transition
 getPostState :: Transition a -> a
 getPostState (Transition _ _ s) = s
+getPostState (ConditionalTransition _ _ s) = s
 getPostState (EmptyTransition _ s) = s
 
 -- |Get the list of states we can transition to given this NFA in the given state, and this input
