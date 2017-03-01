@@ -23,6 +23,7 @@ data Token = TKeyword Keyword
            | TField Field
            | TPunctuator Punctuator
            | TWhitespace Whitespace
+           | TComment
            | TEOF
              deriving (Show, Eq)
 
@@ -98,13 +99,20 @@ type Recognizer = String -> Maybe (String, Token)
 data RecognizerPriority = RP {recognizer :: Recognizer, priority :: Int}
 
 {-|
-Constructs a RecognizerPriority, the recognizer of which takes an input string, and outputs the recognized string and
-the corresponding token.
+Constructs a RecognizerPriority, the recognizer of which takes an input string, and outputs the longest recognized
+string and the corresponding token.
 
 The recognizer is built by taking a priority, the regex string, and function to turn a string into a token.
 -}
 constructRecognizer :: Int -> String -> (String -> Token) -> RecognizerPriority
-constructRecognizer priority regexString stringToToken = RP recognizer' priority
+constructRecognizer = constructRecognizer' True
+
+-- |Same as above, except it output the shortest receognized string
+constructShortestRecognizer :: Int -> String -> (String -> Token) -> RecognizerPriority
+constructShortestRecognizer = constructRecognizer' False
+
+constructRecognizer' :: Bool -> Int -> String -> (String -> Token) -> RecognizerPriority
+constructRecognizer' recognizeLongestString priority regexString stringToToken = RP recognizer' priority
     where
     re = Regex.compile regexString
     recognizer' :: Recognizer
@@ -113,10 +121,14 @@ constructRecognizer priority regexString stringToToken = RP recognizer' priority
             Just matchStr -> Just (matchStr, stringToToken matchStr)
             Nothing -> Nothing
         where
-        match = Regex.longestMatch re str
+        match = if recognizeLongestString
+            then Regex.longestMatch re str
+            else Regex.shortestMatch re str
 
 recognizers :: [RecognizerPriority]
-recognizers = [constructRecognizer 6 "" (\s -> TEOF),
+recognizers = [constructRecognizer 7 "" (\s -> TEOF),
+               constructShortestRecognizer 6 "/\\*.*\\*/" (\s -> TComment),
+               constructRecognizer 6 "//[^\r\n]*" (\s -> TComment),
                constructRecognizer 5 "\r?\n" (\s -> TWhitespace WNewline),
                constructRecognizer 5 "[ \f\t\v]+" (\s -> TWhitespace WOther),
                constructRecognizer 4 "var" (\s -> TKeyword KVar),
