@@ -4,7 +4,8 @@ import Lib
 import System.Environment
 import Data.NFA as NFA
 import Data.DFA as DFA
-import Text.Regex.Thompson as Regex
+import qualified Text.Regex.Thompson as Regex
+import qualified Lexer.Lexer as Lexer
 
 main :: IO ()
 main = do
