@@ -13,8 +13,8 @@ data Pos = Pos { sourceName :: String, line :: !Int, column :: !Int }
 
 instance Show Pos where
     show (Pos sourceName line column)
-        | null sourceName = "'" ++ sourceName ++ "':(" ++ show line ++ "," ++ show column ++ ")"
-        | otherwise = "(" ++ show line ++ "," ++ show column ++ ")"
+        | null sourceName = "(" ++ show line ++ "," ++ show column ++ ")"
+        | otherwise = "'" ++ sourceName ++ "':(" ++ show line ++ "," ++ show column ++ ")"
 
 increaseLine :: Pos -> Int -> Pos
 increaseLine (Pos sourceName line column) n = Pos sourceName (line + n) column
