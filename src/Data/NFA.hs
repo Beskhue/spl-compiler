@@ -19,7 +19,6 @@ module Data.NFA where
 
 import Control.Monad
 import Data.List
-import Data.DFA as DFA
 
 {-|
   List (set) of states
