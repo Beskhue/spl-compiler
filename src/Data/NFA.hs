@@ -135,7 +135,7 @@ evaluate nfa inputString = any (isAccepting nfa) (accessible nfa acc inputString
         acc = lambdaClosure nfa [getInitialState nfa]
         accessible :: Eq a => NFA a -> [a] -> String -> [a]
         accessible nfa states (i:ii) = accessible nfa (lambdaClosure nfa (transitions nfa states i)) ii
-        accessible nfa states [] = eosTransitions nfa states
+        accessible nfa states [] = lambdaClosure nfa (eosTransitions nfa states)
 
 -- |Finds all substrings (expanding to the right) that are recognized by the NFA
 matches :: Eq a => NFA a -> String -> [String]
@@ -154,7 +154,7 @@ matches nfa inputString = snd (accessible nfa acc inputString "" [])
                 eosStates,
                 if any (isAccepting nfa) eosStates then accepting ++ [consumed] else accepting
             )
-            where eosStates = eosTransitions nfa states
+            where eosStates = lambdaClosure nfa (eosTransitions nfa states)
 
 -- |Finds the longest substring recognized by the NFA (the substrings expand to the right, i.e. they match "^regex")
 longestMatch :: Eq a => NFA a -> String -> Maybe String
