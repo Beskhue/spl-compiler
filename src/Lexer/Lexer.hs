@@ -23,13 +23,14 @@ data Token = TKeyword Keyword
            | TField Field
            | TPunctuator Punctuator
            | TWhitespace Whitespace
-           | TComment
+           | TComment Int -- Int encodes how many lines the comment spans
            | TEOF
              deriving (Show, Eq)
 
 data TokenP = TP { token :: Token, pos :: Pos }
 
-data Operator = OPlus
+data Operator = OAssignment
+              | OPlus
               | OMultiply
               | ODivide
               | OMod
@@ -70,7 +71,8 @@ data Field = FHd
            | FSnd
              deriving (Show, Eq)
 
-data Punctuator = PParenOpen
+data Punctuator = PSeparator
+                | PParenOpen
                 | PParenClose
                 | PBraceOpen
                 | PBraceClose
@@ -126,18 +128,67 @@ constructRecognizer' recognizeLongestString priority regexString stringToToken =
             else Regex.shortestMatch re str
 
 recognizers :: [RecognizerPriority]
-recognizers = [constructRecognizer 7 "" (\s -> TEOF),
-               constructShortestRecognizer 6 "/\\*.*\\*/" (\s -> TComment),
-               constructRecognizer 6 "//[^\r\n]*" (\s -> TComment),
-               constructRecognizer 5 "\r?\n" (\s -> TWhitespace WNewline),
-               constructRecognizer 5 "[ \f\t\v]+" (\s -> TWhitespace WOther),
-               constructRecognizer 4 "var" (\s -> TKeyword KVar),
-               constructRecognizer 4 "if" (\s -> TKeyword KIf),
-               constructRecognizer 4 "else" (\s -> TKeyword KElse),
-               constructRecognizer 4 "while" (\s -> TKeyword KWhile),
-               constructRecognizer 4 "return" (\s -> TKeyword KReturn),
-               constructRecognizer 0 "'[^']'|'\\''" (\s -> TConstant (CChar 'a')),
-               constructRecognizer 0 "[0-9]+" (\s -> TConstant (CInt 5))
+recognizers = [ -- End of file
+                constructRecognizer 20 "" (\s -> TEOF),
+                -- Comments
+                constructShortestRecognizer 15 "/\\*.*\\*/" (\s -> TComment $ length $ filter (== '\n') s),
+                constructRecognizer 15 "//[^\r\n]*" (\s -> TComment 0),
+                -- Line ends
+                constructRecognizer 14 "\r?\n" (\s -> TWhitespace WNewline),
+                -- Whitespace
+                constructRecognizer 14 "[ \f\t\v]+" (\s -> TWhitespace WOther),
+                -- Punctuators
+                constructRecognizer 13 ";" (\s -> TPunctuator PSeparator),
+                constructRecognizer 13 "\\(" (\s -> TPunctuator PParenOpen),
+                constructRecognizer 13 "\\)" (\s -> TPunctuator PParenClose),
+                constructRecognizer 13 "{" (\s -> TPunctuator PBraceOpen),
+                constructRecognizer 13 "}" (\s -> TPunctuator PBraceClose),
+                constructRecognizer 13 "\\[" (\s -> TPunctuator PSquareBracketOpen),
+                constructRecognizer 13 "\\]" (\s -> TPunctuator PSquareBracketClose),
+                constructRecognizer 13 "," (\s -> TPunctuator PComma),
+                constructRecognizer 13 "\\->" (\s -> TPunctuator PMapTo),
+                constructRecognizer 13 "\\-" (\s -> TPunctuator PMinus),
+                -- Keywords
+                constructRecognizer 10 "var" (\s -> TKeyword KVar),
+                constructRecognizer 10 "if" (\s -> TKeyword KIf),
+                constructRecognizer 10 "else" (\s -> TKeyword KElse),
+                constructRecognizer 10 "while" (\s -> TKeyword KWhile),
+                constructRecognizer 10 "return" (\s -> TKeyword KReturn),
+                -- Types
+                constructRecognizer 9 "Int" (\s -> TType TypeInt),
+                constructRecognizer 9 "Bool" (\s -> TType TypeBool),
+                constructRecognizer 9 "Char" (\s -> TType TypeChar),
+                constructRecognizer 9 "Void" (\s -> TType TypeVoid),
+                -- Operators
+                constructRecognizer 8 "=" (\s -> TOperator OAssignment),
+                constructRecognizer 8 "\\+" (\s -> TOperator OPlus),
+                constructRecognizer 8 "\\*" (\s -> TOperator OMultiply),
+                constructRecognizer 8 "/" (\s -> TOperator ODivide),
+                constructRecognizer 8 "%" (\s -> TOperator OMod),
+                constructRecognizer 8 "==" (\s -> TOperator OEq),
+                constructRecognizer 8 "<" (\s -> TOperator OLT),
+                constructRecognizer 8 ">" (\s -> TOperator OGT),
+                constructRecognizer 8 "<=" (\s -> TOperator OLTE),
+                constructRecognizer 8 ">=" (\s -> TOperator OGTE),
+                constructRecognizer 8 "!=" (\s -> TOperator ONEq),
+                constructRecognizer 8 "&&" (\s -> TOperator OAnd),
+                constructRecognizer 8 "\\|\\|" (\s -> TOperator OOr),
+                constructRecognizer 8 ":" (\s -> TOperator OConcat),
+                constructRecognizer 8 "!" (\s -> TOperator ONeg),
+                -- Fields
+                constructRecognizer 7 "\\.hd" (\s -> TField FHd),
+                constructRecognizer 7 "\\.tl" (\s -> TField FTl),
+                constructRecognizer 7 "\\.fst" (\s -> TField FFst),
+                constructRecognizer 7 "\\.snd" (\s -> TField FSnd),
+                -- Constants
+                constructRecognizer 1 "True" (\s -> TConstant $ CBool True),
+                constructRecognizer 1 "False" (\s -> TConstant $ CBool False),
+                constructRecognizer 1 "[0-9]+" (\s -> TConstant $ CInt (read s :: Int)),
+                constructRecognizer 1 "0x[0-9a-fA-F]+" (\s -> TConstant $ CInt (read s :: Int)), -- Hex
+                constructRecognizer 1 "'[^']'|'\\''" (\s -> TConstant $ CChar $ s !! (length s - 1)),
+                constructRecognizer 1 "\\[\\]" (\s -> TConstant CEmptyList),
+                -- Identifiers
+                constructRecognizer 0 "[a-zA-Z]([_a-zA-Z0-9])*" (\s -> TIdentifier s)
                ]
 
 {-
