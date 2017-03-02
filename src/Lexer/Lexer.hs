@@ -107,7 +107,7 @@ The recognizer is built by taking a priority, the regex string, and function to 
 constructRecognizer :: Int -> String -> (String -> Token) -> RecognizerPriority
 constructRecognizer = constructRecognizer' True
 
--- |Same as above, except it output the shortest receognized string
+-- |Same as above, except it output the shortest recognized string
 constructShortestRecognizer :: Int -> String -> (String -> Token) -> RecognizerPriority
 constructShortestRecognizer = constructRecognizer' False
 
