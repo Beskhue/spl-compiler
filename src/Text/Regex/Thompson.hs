@@ -99,6 +99,7 @@ token c     = TChar c
 
 tokenToChar :: Token -> Char
 tokenToChar TUnion = '|'
+tokenToChar TAll = '.'
 tokenToChar TStar = '*'
 tokenToChar TPlus = '+'
 tokenToChar TOption = '?'
