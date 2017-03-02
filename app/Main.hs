@@ -9,14 +9,16 @@ import qualified Lexer.Lexer as Lexer
 
 main :: IO ()
 main = do
+    filePath <- getFilePath
+    rawSPL <- readFile filePath
+    putStrLn $ "Read '" ++ filePath ++ "'."
+    putStrLn rawSPL
+
+getFilePath :: IO String
+getFilePath = do
     args <- getArgs
     if length args > 0
-        then do
-            let filePath = head args
-            rawSPL <- readFile filePath
-            putStrLn $ "Read '" ++ filePath ++ "'."
-            putStrLn rawSPL
-            -- rawSPL <- readFile filePath
-            -- putStrLn rawSPL
-        else putStrLn "Please provide a .spl program"
-
+        then return $ head args
+        else do
+            putStr "Please provide a .spl program: "
+            getLine
