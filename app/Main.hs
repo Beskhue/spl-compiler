@@ -3,9 +3,9 @@ module Main where
 import Lib
 import System.Environment
 import Data.NFA as NFA
-import Data.DFA as DFA
 import qualified Text.Regex.Thompson as Regex
 import qualified Lexer.Lexer as Lexer
+import qualified Parser.Parser as Parser
 
 main :: IO ()
 main = do
