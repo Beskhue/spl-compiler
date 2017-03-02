@@ -35,6 +35,13 @@ data NFA a = NFA
 
 data Input = IChar Char | ILambda | IEOS
 
+instance Show a => Show (NFA a) where
+    show (NFA states trans init accs) =
+        "States: " ++ show states
+        ++ "\nInitial state: " ++ show init
+        ++ "\nAccepting states: " ++ show accs
+        ++ "\nTransitions: " ++ show trans
+
 {-|
   A transition is either a transition from one state to another given a char
   or a transition from one state to another given no input
@@ -48,6 +55,12 @@ data Transition a = Transition a Char a
                   | ConditionalTransition a (Char -> Bool) a
                   | EmptyTransition a a
                   | EOSTransition a a
+
+instance Show a => Show (Transition a) where
+    show (Transition s1 c s2) = show s1 ++ " -" ++ [c] ++ "> " ++ show s2
+    show (ConditionalTransition s1 f s2) = show s1 ++ "-conditional>" ++ show s2
+    show (EmptyTransition s1 s2) = show s1 ++ "-lambda>" ++ show s2
+    show (EOSTransition s1 s2) = show s1 ++ "-eos>" ++ show s2
 
 -- |Test whether state 'state' is an accepting state in an NFA
 isAccepting :: Eq a => NFA a -> a -> Bool
