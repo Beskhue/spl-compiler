@@ -29,6 +29,9 @@ data Token = TKeyword Keyword
 
 data TokenP = TP { token :: Token, pos :: Pos }
 
+instance Show TokenP where
+    show (TP token pos) = show token ++ ":" ++ show pos
+
 data Operator = OAssignment
               | OPlus
               | OMultiply
@@ -90,12 +93,7 @@ data Whitespace = WNewline
 type Identifier = String
 
 ------------------------------------------------------------------------------------------------------------------------
--- Scanner
-
-data LexError = UnexpectedToken Token Token
-                 deriving (Eq)
-type LexErrorP = (LexError, Pos)
-type LexT = StateT (String, Pos) (Except LexErrorP)
+-- Token recognizer
 
 type Recognizer = String -> Maybe (String, Token)
 data RecognizerPriority = RP {recognizer :: Recognizer, priority :: Int}
@@ -129,7 +127,7 @@ constructRecognizer' recognizeLongestString priority regexString stringToToken =
 
 recognizers :: [RecognizerPriority]
 recognizers = [ -- End of file
-                constructRecognizer 20 "" (\s -> TEOF),
+                constructRecognizer 20 "$" (\s -> TEOF),
                 -- Comments
                 constructShortestRecognizer 15 "/\\*.*\\*/" (\s -> TComment $ length $ filter (== '\n') s),
                 constructRecognizer 15 "//[^\r\n]*" (\s -> TComment 0),
@@ -216,6 +214,83 @@ recognize recognizers input = fst $ argmax (
                         (Nothing, _) -> -1
             ) recognizersApplied
 
+------------------------------------------------------------------------------------------------------------------------
+-- Scanner
+
+data LexError = UnrecognizedCharacter Char
+                deriving (Eq)
+type LexErrorP = (LexError, Pos)
+type LexT = StateT (TokenP, String, Pos) (Except LexErrorP)
+
+instance Show LexError where
+    show (UnrecognizedCharacter c) = "Could not lex. Unrecognized character: " ++ [c]
+
 -- |Scan an input string to a list of tokens
-lex :: String -> [Token]
-lex = undefined
+lex :: String -> [TokenP]
+lex str =
+    case t of
+        Left (lexError, pos) -> error $ show lexError
+        Right tokens -> tokens
+    where
+        t = lex' str
+
+-- |Scan an input string to either a lexing error or a list of tokens
+lex' :: String -> Either LexErrorP [TokenP]
+lex' str = runExcept $ evalStateT lexSteps (undefined, str, Pos 1 1)
+
+-- |Get the current lexeme from the state
+getLexeme :: LexT TokenP
+getLexeme = do
+    (lexeme, _, _) <- get
+    return lexeme
+
+-- |Get the string from the state
+getStr :: LexT String
+getStr = do
+    (_, str, _) <- get
+    return str
+
+-- |Get the position from the state
+getPos :: LexT Pos
+getPos = do
+    (_, _, pos) <- get
+    return pos
+
+lexSteps :: LexT [TokenP]
+lexSteps = do
+    advance
+    lexeme <- getLexeme
+    case lexeme of
+        TP TEOF _ -> return [lexeme] -- TODO: check if str empty
+        _ -> liftM (lexeme :) lexSteps
+
+advance :: LexT ()
+advance = do
+    str <- getStr
+    pos <- getPos
+    case recognize recognizers str of
+        Nothing -> do
+            put (undefined, str, pos)
+            lift $ throwE (UnrecognizedCharacter (head str), pos)
+        Just (recognizedStr, t) ->
+            let newStr = drop (length recognizedStr) str
+                (Pos line column) = pos in
+                    case t of
+                            TWhitespace WNewline -> put (
+                                    TP t pos,
+                                    newStr,
+                                    Pos (line + 1) 1
+                                )
+                            TComment n -> put (
+                                    TP t pos,
+                                     newStr,
+                                     Pos (line + n) (countCharsFromLastNewline recognizedStr + 1)
+                                )
+                            _ -> put (
+                                    TP t pos,
+                                    newStr,
+                                    Pos line (column + length recognizedStr)
+                                )
+    where
+        countCharsFromLastNewline :: String -> Int
+        countCharsFromLastNewline = foldl (\count char -> if char == '\n' then 0 else count + 1) 0
