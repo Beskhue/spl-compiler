@@ -261,7 +261,7 @@ lexSteps = do
     advance
     lexeme <- getLexeme
     case lexeme of
-        TP TEOF _ -> return [lexeme] -- TODO: check if str empty
+        TP TEOF _ -> return [lexeme]
         _ -> liftM (lexeme :) lexSteps
 
 advance :: LexT ()
