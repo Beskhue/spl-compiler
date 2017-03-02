@@ -223,20 +223,11 @@ type LexErrorP = (LexError, Pos)
 type LexT = StateT (TokenP, String, Pos) (Except LexErrorP)
 
 instance Show LexError where
-    show (UnrecognizedCharacter c) = "Could not lex. Unrecognized character: " ++ [c]
-
--- |Scan an input string to a list of tokens
-lex :: String -> [TokenP]
-lex str =
-    case t of
-        Left (lexError, pos) -> error $ show lexError
-        Right tokens -> tokens
-    where
-        t = lex' str
+    show (UnrecognizedCharacter c) = "Unrecognized character: " ++ [c]
 
 -- |Scan an input string to either a lexing error or a list of tokens
-lex' :: String -> Either LexErrorP [TokenP]
-lex' str = runExcept $ evalStateT lexSteps (undefined, str, Pos 1 1)
+lex :: String -> Either LexErrorP [TokenP]
+lex str = runExcept $ evalStateT lexSteps (undefined, str, Pos 1 1)
 
 -- |Get the current lexeme from the state
 getLexeme :: LexT TokenP
