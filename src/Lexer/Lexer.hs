@@ -5,92 +5,9 @@ import Control.Monad.Trans
 import Control.Monad.Trans.State.Lazy
 import Control.Monad.Trans.Except
 import Data.List.Extras.Argmax
+import Data.Token
+import Data.Pos
 import qualified Text.Regex.Thompson as Regex
-
-data Pos = Pos { line :: Int, column :: Int }
-
-------------------------------------------------------------------------------------------------------------------------
--- Data types
-
-instance Show Pos where
-    show (Pos line column) = "(" ++ show line ++ "," ++ show column ++ ")"
-
-data Token = TKeyword Keyword
-           | TIdentifier Identifier
-           | TConstant Constant
-           | TType Type
-           | TOperator Operator
-           | TField Field
-           | TPunctuator Punctuator
-           | TWhitespace Whitespace
-           | TComment Int -- Int encodes how many lines the comment spans
-           | TEOF
-             deriving (Show, Eq)
-
-data TokenP = TP { token :: Token, pos :: Pos }
-
-instance Show TokenP where
-    show (TP token pos) = show token ++ ":" ++ show pos
-
-data Operator = OAssignment
-              | OPlus
-              | OMultiply
-              | ODivide
-              | OMod
-              | OEq
-              | OLT
-              | OGT
-              | OLTE
-              | OGTE
-              | ONEq
-              | OAnd
-              | OOr
-              | OConcat
-              | ONeg
-                deriving (Show, Eq)
-
-data Keyword = KVar
-             | KIf
-             | KElse
-             | KWhile
-             | KReturn
-               deriving (Show, Eq)
-
-data Type = TypeInt
-          | TypeBool
-          | TypeChar
-          | TypeVoid
-            deriving (Show, Eq)
-
-data Constant = CBool Bool
-              | CInt Int
-              | CChar Char
-              | CEmptyList
-                deriving (Show, Eq)
-
-data Field = FHd
-           | FTl
-           | FFst
-           | FSnd
-             deriving (Show, Eq)
-
-data Punctuator = PSeparator
-                | PParenOpen
-                | PParenClose
-                | PBraceOpen
-                | PBraceClose
-                | PSquareBracketOpen
-                | PSquareBracketClose
-                | PComma
-                | PMapTo
-                | PMinus
-                  deriving (Show, Eq)
-
-data Whitespace = WNewline
-                | WOther
-                  deriving (Show, Eq)
-
-type Identifier = String
 
 ------------------------------------------------------------------------------------------------------------------------
 -- Token recognizer
@@ -226,8 +143,8 @@ instance Show LexError where
     show (UnrecognizedCharacter c) = "Unrecognized character: " ++ [c]
 
 -- |Scan an input string to either a lexing error or a list of tokens
-lex :: String -> Either LexErrorP [TokenP]
-lex str = runExcept $ evalStateT lexSteps (undefined, str, Pos 1 1)
+lex :: String -> String -> Either LexErrorP [TokenP]
+lex fileName str = runExcept $ evalStateT lexSteps (undefined, str, Pos fileName 1 1)
 
 -- |Get the current lexeme from the state
 getLexeme :: LexT TokenP
@@ -264,24 +181,25 @@ advance = do
             put (undefined, str, pos)
             lift $ throwE (UnrecognizedCharacter (head str), pos)
         Just (recognizedStr, t) ->
-            let newStr = drop (length recognizedStr) str
-                (Pos line column) = pos in
-                    case t of
-                            TWhitespace WNewline -> put (
-                                    TP t pos,
-                                    newStr,
-                                    Pos (line + 1) 1
-                                )
-                            TComment n -> put (
-                                    TP t pos,
-                                     newStr,
-                                     Pos (line + n) (countCharsFromLastNewline recognizedStr + 1)
-                                )
-                            _ -> put (
-                                    TP t pos,
-                                    newStr,
-                                    Pos line (column + length recognizedStr)
-                                )
+            let newStr = drop (length recognizedStr) str in
+                case t of
+                    TWhitespace WNewline -> put (
+                            TP t pos,
+                            newStr,
+                            increaseLine pos 1
+                        )
+                    TComment n -> put (
+                            TP t pos,
+                            newStr,
+                            (flip setColumn) (countCharsFromLastNewline recognizedStr + 1) (increaseLine pos n)
+                            -- Pos (line + n) (countCharsFromLastNewline recognizedStr + 1)
+                        )
+                    _ -> put (
+                            TP t pos,
+                            newStr,
+                            increaseColumn pos (length recognizedStr)
+                            -- Pos line (column + length recognizedStr)
+                        )
     where
         countCharsFromLastNewline :: String -> Int
         countCharsFromLastNewline = foldl (\count char -> if char == '\n' then 0 else count + 1) 0
