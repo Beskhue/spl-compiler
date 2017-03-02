@@ -58,6 +58,7 @@ spec_Regex = do
                 Regex.evaluate a "ab" `shouldBe` True
                 Regex.evaluate a "abee" `shouldBe` True
                 Regex.evaluate a "cd" `shouldBe` True
+                Regex.evaluate a "abeeb" `shouldBe` False
         it "recognizes exactly the characters in a character set" $ do
             let a = Regex.compile("[abch-lX-Zq0-9r]") in do
                 let chars = ['a', 'b', 'c'] ++ ['h' .. 'l'] ++ ['X' .. 'Z'] ++ ['q'] ++ ['0' .. '9'] ++ ['r'] in do
@@ -119,6 +120,11 @@ spec_Regex = do
             let a = Regex.compile("(a|b)*") in do
                 Regex.shortestMatch a "The quick brown fox jumped over the lazy dog" `shouldBe` Just ""
                 Regex.shortestMatch a "" `shouldBe` Just ""
+        it "only matches entire string when using end of string anchors" $ do
+            let a = Regex.compile("a*$") in do
+                Regex.shortestMatch a "aaaa" `shouldBe` Just "aaaa"
+                Regex.shortestMatch a "" `shouldBe` Just ""
+                Regex.shortestMatch a "b" `shouldBe` Nothing
     describe "Regex.matches" $ do
         it "finds no matches if there are none" $ do
             let a = Regex.compile("a+b+") in do

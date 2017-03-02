@@ -30,6 +30,7 @@ import Data.Functor.Identity
 import Data.NFA as NFA
 
 data Regex = Lambda
+           | EOS
            | All
            | Literal Char
            | Union Regex Regex
@@ -77,8 +78,9 @@ data Token = TUnion
              | TNegSet
              | TRangeDelimiter
              | TEscape
-             | TChar Char
+             | TEOS
              | TEOF
+             | TChar Char
                deriving (Show, Eq)
 
 -- |Tokenize a character
@@ -95,6 +97,7 @@ token ']'   = TSetClose
 token '^'   = TNegSet
 token '-'   = TRangeDelimiter
 token '\\'  = TEscape -- \
+token '$'   = TEOS
 token c     = TChar c
 
 tokenToChar :: Token -> Char
@@ -110,8 +113,9 @@ tokenToChar TSetClose = ']'
 tokenToChar TNegSet = '^'
 tokenToChar TRangeDelimiter = '-'
 tokenToChar TEscape = '\\'
-tokenToChar (TChar c) = c
+tokenToChar TEOS = '$'
 tokenToChar TEOF = '\0'
+tokenToChar (TChar c) = c
 
 -- |Tokenize a string
 tokenize :: String -> [Token]
@@ -130,7 +134,7 @@ tokenize s = cleanupEscapes [token c | c <- s] ++ [TEOF]
     <regex>             ::= <term> '|' <regex>
                             | <term>
     <term>              ::= <basic-regex> <term> | <basic-regex>
-    <basic-regex>       ::= <base> '*' | <base> '+' | <base> '?' | <base>
+    <basic-regex>       ::= <base> '*' | <base> '+' | <base> '?' | <base> | '$'
     <base>              ::= <group> | <set> | '.' | <char>
     <group>             ::= '(' <regex> ')'
     <set>               ::= '[' <set-items> ']'
@@ -237,13 +241,17 @@ pTerm = do
 
 pBasicRegex :: ParseT Regex -- <basic-regex> ->
 pBasicRegex = do
-    base <- pBase
     token <- getToken
     case token of
-        TStar -> eat TStar >> return (Star base) -- <base> '*'
-        TPlus -> eat TPlus >> return (Concat base (Star base)) -- <base> '+'
-        TOption -> eat TOption >> return (Option base) -- <base> '?'
-        _ -> return base -- <base>
+        TEOS -> eat TEOS >> return EOS
+        _ -> do
+            base <- pBase
+            token <- getToken
+            case token of
+                TStar -> eat TStar >> return (Star base) -- <base> '*'
+                TPlus -> eat TPlus >> return (Concat base (Star base)) -- <base> '+'
+                TOption -> eat TOption >> return (Option base) -- <base> '?'
+                _ -> return base -- <base>
 
 pBase :: ParseT Regex -- <base> ->
 pBase = do
@@ -324,11 +332,16 @@ type CompiledRegex = NFA.NFA Int
 
 -- |Compile a regex string to a regex
 compile :: String -> CompiledRegex
-compile str = normalizeNFA (build (parse str))
+compile str = addEOSTransitions $ normalizeNFA (build (parse str))
 
 -- |Normalize a regex NFA
 normalizeNFA :: NFA.NFA Int -> NFA.NFA Int
 normalizeNFA (NFA.NFA states trans init accs) = nfaIncrementIndices (NFA.NFA states trans init accs) (- (head states))
+
+addEOSTransitions :: NFA.NFA Int -> NFA.NFA Int
+addEOSTransitions (NFA.NFA states trans init accs) = NFA.NFA states newTrans init accs
+    where
+        newTrans = trans ++ [NFA.EOSTransition s s | s <- accs]
 
 -- |Compile a regex to an NFA
 build :: Regex -> NFA.NFA Int
@@ -337,6 +350,11 @@ build Lambda = NFA.NFA
     []
     0
     [0]
+build EOS = NFA.NFA
+    [0, 1]
+    [NFA.EOSTransition 0 1]
+    0
+    [1]
 build (Literal c) = NFA.NFA
     [0 .. 1]
     [NFA.Transition 0 c 1]
@@ -469,6 +487,7 @@ nfaIncrementIndices (NFA.NFA states trans init accs) inc = NFA.NFA
         NFA.Transition i1 c i2 -> NFA.Transition (i1 + inc) c (i2 + inc)
         NFA.ConditionalTransition i1 c i2 -> NFA.ConditionalTransition (i1 + inc) c (i2 + inc)
         NFA.EmptyTransition i1 i2 -> NFA.EmptyTransition (i1 + inc) (i2 + inc)
+        NFA.EOSTransition i1 i2 -> NFA.EOSTransition (i1 + inc) (i2 + inc)
             | tran <- trans]
     (init + inc)
     [acc + inc | acc <- accs]
