@@ -15,6 +15,9 @@ data AST' = AChar Char
          | AExpr AST AST
            deriving (Show)
 
+parse :: String -> [TokenP] -> Either Parsec.ParseError AST.SPL
+parse = Text.Parsec.Prim.parse pSPL
+
 posToSourcePos :: Pos -> SourcePos.SourcePos
 posToSourcePos (Pos name line column) = SourcePos.newPos name line column
 
@@ -29,16 +32,11 @@ satisfy f = tokenPrim show advance
 tok :: Token -> Parser TokenP
 tok t = (satisfy $ (== t) . Data.Token.token) <?> show t
 
-data Type'           = TypeTuple Type Type
-                     | TypeList Type
-                     | TypeInt
-                     | TypeBool
-                     | TypeChar
-                     | TypeIdentifier Identifier
+pPeek :: Parser Token
+pPeek = lookAhead $ tokenPrim show advance (\(TP t p) -> Just t)
 
 pSPL :: Parser AST.SPL
 pSPL = many1 pDecl
-
 
 -- TODO: get rid of 'try'
 pDecl :: Parser AST.Decl
@@ -239,6 +237,7 @@ pStatementReturn = (do
         Just expr -> return (AST.StmtReturn expr, p)
         Nothing -> return (AST.StmtReturnVoid, p)) <?> "a return statement"
 
+-- TODO: associativity
 pExpression :: Parser AST.Expression
 pExpression = pExpression' 1
     where
@@ -380,9 +379,6 @@ pIdentifier = tokenPrim show advance
 
 pSeparator :: Parser TokenP
 pSeparator = tok (TPunctuator PSeparator)
-
-pPeek :: Parser Token
-pPeek = lookAhead $ tokenPrim show advance (\(TP t p) -> Just t)
 
 parseTest :: (Show a) => Parser a -> [TokenP] -> IO ()
 parseTest = Parsec.parseTest
