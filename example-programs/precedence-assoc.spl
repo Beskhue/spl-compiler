@@ -1,0 +1,8 @@
+Int n1 = 1 + 2 + 3 + 4 + 5; // Minimal
+Int n2 = 1 - 2 + 3 - 4 + 5 - 6; // Minimal
+Int n3 = ((((1 - 2) + 3) - 4) + 5) - 6; // Minimal: 1 - 2 + 3 - 4 + 5 - 6
+Int n4 = 1 + 2 + 3 + (4 + 5); // Minimal
+Int n5 = ((1 + -2) + 3) - 4; // Minimal: 1 + -2 + 3 - 4
+Int n6 = 1 * 2 + 3 * 4 + 5; // Minimal
+Int n7 = ((1 * 2) + (3 * 4)) + 5; // Minimal: 1 * 2 + 3 * 4 + 5
+Int n8 = 1 * (2 + 3) * 4 + 5; // Minimal
