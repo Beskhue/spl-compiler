@@ -242,16 +242,15 @@ pExpression = pExpression' 1
     where
         pExpression' :: Int -> Parser AST.Expression
         pExpression' 8          = pExprBase
-        pExpression' precedence = do
-            (expr, p) <- pExpression' (precedence + 1)
-            ( do
-                    binaryOperator <- try pBinaryOperator
-                    if AST.binaryOperatorPrecedence binaryOperator == precedence
-                        then do
-                            expr' <- pExpression' precedence
-                            return (AST.ExprBinaryOp binaryOperator (expr, p) expr', p)
-                        else return (expr, p)
-                ) <|> return (expr, p)
+        pExpression' precedence = do {
+            (expr, p) <- pExpression' (precedence + 1); (do
+                binaryOperator <- try pBinaryOperator
+                if AST.binaryOperatorPrecedence binaryOperator == precedence
+                    then do
+                        expr' <- pExpression' precedence
+                        return (AST.ExprBinaryOp binaryOperator (expr, p) expr', p)
+                    else return (expr, p)
+            ) <|> return (expr, p)}
 
 pExprBase :: Parser AST.Expression
 pExprBase = pExprGroupOrTuple
