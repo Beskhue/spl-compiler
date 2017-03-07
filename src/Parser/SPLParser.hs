@@ -82,13 +82,13 @@ pFunDecl = (do
                 tok (TPunctuator PFunType)
                 funType <- pFunType
                 tok (TPunctuator PBraceOpen)
-                varDecls <- many pVarDecl
+                varDecls <- many (try pVarDecl)
                 statements <- many1 pStatement
                 tok (TPunctuator PBraceClose) <?> "a closing brace"
                 return (AST.FunDeclTyped (identifier, p) args funType varDecls statements, p)
             _ -> do
                 tok (TPunctuator PBraceOpen)
-                varDecls <- many pVarDecl
+                varDecls <- many (try pVarDecl)
                 statements <- many1 pStatement
                 tok (TPunctuator PBraceClose) <?> "a closing brace"
                 return (AST.FunDeclUntyped (identifier, p) args varDecls statements, p)
