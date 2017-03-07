@@ -117,7 +117,9 @@ pFunType = (do
         TP _ p <- tok (TPunctuator PMapTo) <?> "a 'maps to' symbol (->)"
         t <- pPeek
         case t of
-            TType Data.Token.TypeVoid -> return (AST.FunTypeVoid types, p)
+            TType Data.Token.TypeVoid -> do
+                tok (TType Data.Token.TypeVoid)
+                return (AST.FunTypeVoid types, p)
             _ -> do
                 returnType <- pType <?> "a return type"
                 return (AST.FunType types returnType, p)
