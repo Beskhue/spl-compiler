@@ -162,11 +162,19 @@ instance PrettyPrint Expression where
     prettyPrint (ExprConstant c, _) = prettyPrint c
     prettyPrint (ExprTuple e1 e2, _) = "(" ++ prettyPrint e1 ++ ", " ++ prettyPrint e2 ++ ")"
     prettyPrint (ExprUnaryOp op e, _) = prettyPrint op ++ prettyPrint e
-    prettyPrint (ExprBinaryOp op e1 e2, _) = print' e1 ++ prettyPrint op ++ print' e2
+    prettyPrint (ExprBinaryOp op e1 e2, _) = case binaryOperatorAssociativity op of
+        ALeft ->
+            print' (binaryOperatorPrecedence op - 1) e1
+            ++ prettyPrint op
+            ++ print' (binaryOperatorPrecedence op) e2
+        ARight ->
+            print' (binaryOperatorPrecedence op) e1
+            ++ prettyPrint op
+            ++ print' (binaryOperatorPrecedence op - 1) e2
         where
-            print' :: Expression -> String
-            print' e = case e of
-                (ExprBinaryOp op' _ _, _) -> if binaryOperatorPrecedence op' < binaryOperatorPrecedence op
+            print' :: Int -> Expression -> String
+            print' precedence e = case e of
+                (ExprBinaryOp op' _ _, _) -> if binaryOperatorPrecedence op' <= precedence
                     then "(" ++ prettyPrint e ++ ")"
                     else prettyPrint e
                 _ -> prettyPrint e
