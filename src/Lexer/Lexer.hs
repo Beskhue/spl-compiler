@@ -198,7 +198,7 @@ advance = do
                     TWhitespace WNewline -> put (
                             TP t pos,
                             newStr,
-                            increaseLine pos 1
+                            (flip setColumn) 1 (increaseLine pos 1)
                         )
                     TComment n -> put (
                             TP t pos,
