@@ -15,8 +15,8 @@ data AST' = AChar Char
          | AExpr AST AST
            deriving (Show)
 
-parse :: String -> [TokenP] -> Either Parsec.ParseError AST.SPL
-parse = Text.Parsec.Prim.parse pSPL
+parse :: [TokenP] -> Either Parsec.ParseError AST.SPL
+parse = Text.Parsec.Prim.parse pSPL ""
 
 posToSourcePos :: Pos -> SourcePos.SourcePos
 posToSourcePos (Pos name line column) = SourcePos.newPos name line column
