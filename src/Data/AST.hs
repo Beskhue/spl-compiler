@@ -165,7 +165,11 @@ instance PrettyPrint Expression where
     prettyPrint (ExprBinaryOp op e1 e2, _) = print' e1 ++ prettyPrint op ++ print' e2
         where
             print' :: Expression -> String
-            print' e = prettyPrint e
+            print' e = case e of
+                (ExprBinaryOp op' _ _, _) -> if binaryOperatorPrecedence op' < binaryOperatorPrecedence op
+                    then "(" ++ prettyPrint e ++ ")"
+                    else prettyPrint e
+                _ -> prettyPrint e
 
 data Constant'       = ConstBool Bool
                      | ConstInt Int
@@ -260,6 +264,27 @@ binaryOperatorPrecedence' BinaryOpMod = 7
 
 binaryOperatorPrecedence :: BinaryOperator -> Int
 binaryOperatorPrecedence (bOp, _) = binaryOperatorPrecedence' bOp
+
+data Associativity = ALeft | ARight
+
+binaryOperatorAssociativity' :: BinaryOperator' -> Associativity
+binaryOperatorAssociativity' BinaryOpOr = ALeft
+binaryOperatorAssociativity' BinaryOpAnd = ALeft
+binaryOperatorAssociativity' BinaryOpEq = ALeft
+binaryOperatorAssociativity' BinaryOpNEq = ALeft
+binaryOperatorAssociativity' BinaryOpLT = ALeft
+binaryOperatorAssociativity' BinaryOpGT = ALeft
+binaryOperatorAssociativity' BinaryOpLTE = ALeft
+binaryOperatorAssociativity' BinaryOpGTE = ALeft
+binaryOperatorAssociativity' BinaryOpConcat = ARight
+binaryOperatorAssociativity' BinaryOpPlus = ALeft
+binaryOperatorAssociativity' BinaryOpSubtr = ALeft
+binaryOperatorAssociativity' BinaryOpMult = ALeft
+binaryOperatorAssociativity' BinaryOpDiv = ALeft
+binaryOperatorAssociativity' BinaryOpMod = ALeft
+
+binaryOperatorAssociativity :: BinaryOperator -> Associativity
+binaryOperatorAssociativity (bOp, _) = binaryOperatorAssociativity' bOp
 
 indent :: String -> String
 indent ""  = ""
