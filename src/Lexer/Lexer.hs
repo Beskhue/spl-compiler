@@ -63,6 +63,7 @@ recognizers = [ -- End of file
                 constructRecognizer 13 "," (\s -> TPunctuator PComma),
                 constructRecognizer 13 "\\->" (\s -> TPunctuator PMapTo),
                 constructRecognizer 13 "\\-" (\s -> TPunctuator PMinus),
+                constructRecognizer 13 "::" (\s -> TPunctuator PFunType),
                 -- Keywords
                 constructRecognizer 10 "var" (\s -> TKeyword KVar),
                 constructRecognizer 10 "if" (\s -> TKeyword KIf),

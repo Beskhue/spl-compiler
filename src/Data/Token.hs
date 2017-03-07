@@ -79,6 +79,7 @@ data Punctuator = PSeparator
                 | PSquareBracketClose
                 | PComma
                 | PMapTo
+                | PFunType
                 | PMinus
                   deriving (Show, Eq)
 
