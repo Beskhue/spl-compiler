@@ -144,7 +144,18 @@ instance Show LexError where
 
 -- |Scan an input string to either a lexing error or a list of tokens
 lex :: String -> String -> Either LexErrorP [TokenP]
-lex fileName str = runExcept $ evalStateT lexSteps (undefined, str, Pos fileName 1 1)
+lex fileName str = case runExcept $ evalStateT lexSteps (undefined, str, Pos fileName 1 1) of
+    Left lexError -> Left lexError
+    Right ts -> Right $ filterWhitespaceAndComments ts
+
+filterWhitespaceAndComments :: [TokenP] -> [TokenP]
+filterWhitespaceAndComments = filter
+    (
+        \tp -> case tp of
+            TP (TWhitespace _) _ -> False
+            TP (TComment _) _ -> False
+            _ -> True
+    )
 
 -- |Get the current lexeme from the state
 getLexeme :: LexT TokenP
