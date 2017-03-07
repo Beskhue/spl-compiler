@@ -1,12 +1,27 @@
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+
 module Data.AST where
 
 import Data.Pos
 
+class PrettyPrint a where
+    prettyPrint :: a -> String
+
+
 type SPL             = [Decl]
+
+instance PrettyPrint SPL where
+    prettyPrint (decl:decls) = prettyPrint decl ++ "\n"
+    prettyPrint [] = ""
+
 data Decl'           = DeclV VarDecl
                      | DeclF FunDecl
                        deriving (Show)
 type Decl            = (Decl', Pos)
+
+instance PrettyPrint Decl where
+    prettyPrint d = "asd"
 
 data VarDecl'        = VarDeclTyped Type Identifier Expression
                      | VarDeclUntyped Identifier Expression
