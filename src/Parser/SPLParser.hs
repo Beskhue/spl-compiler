@@ -244,10 +244,11 @@ pExpression = pExpression' 1
         pExpression' 8          = pExprBase
         pExpression' precedence = do {
             (expr, p) <- pExpression' (precedence + 1); (do
-                binaryOperator <- try pBinaryOperator
+                binaryOperator <- try (lookAhead pBinaryOperator)
                 if AST.binaryOperatorPrecedence binaryOperator == precedence
                     then do
-                        expr' <- pExpression' precedence
+                        pBinaryOperator -- consume binary operator
+                        expr' <- pExpression
                         return (AST.ExprBinaryOp binaryOperator (expr, p) expr', p)
                     else return (expr, p)
             ) <|> return (expr, p)}
