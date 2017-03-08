@@ -16,7 +16,7 @@ data AST' = AChar Char
            deriving (Show)
 
 parseDet :: [TokenP] -> AST.SPL
-parseDet ts = case parse ts of
+parseDet ts = case Parser.SPLParser.parse ts of
     Left _ -> fail "Parsing failed."
     Right ast -> ast
 
