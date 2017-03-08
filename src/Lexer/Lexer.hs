@@ -143,6 +143,12 @@ type LexT = StateT (TokenP, String, Pos) (Except LexErrorP)
 instance Show LexError where
     show (UnrecognizedCharacter c) = "Unrecognized character: " ++ [c]
 
+-- |Scan an input string to either an empty list or a list of tokens
+lexDet :: String -> String -> [TokenP]
+lexDet fileName str = case Lexer.Lexer.lex fileName str of
+    Left _ -> []
+    Right ts -> ts
+
 -- |Scan an input string to either a lexing error or a list of tokens
 lex :: String -> String -> Either LexErrorP [TokenP]
 lex fileName str = case runExcept $ evalStateT lexSteps (undefined, str, Pos fileName 1 1) of
