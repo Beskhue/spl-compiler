@@ -15,6 +15,11 @@ data AST' = AChar Char
          | AExpr AST AST
            deriving (Show)
 
+parseDet :: [TokenP] -> AST.SPL
+parseDet ts = case parse ts of
+    Left _ -> fail "Parsing failed."
+    Right ast -> ast
+
 parse :: [TokenP] -> Either Parsec.ParseError AST.SPL
 parse = Text.Parsec.Prim.parse pSPL ""
 
