@@ -25,6 +25,12 @@ data Token = TKeyword Keyword
 
 data TokenP = TP { token :: Token, pos :: Pos }
 
+getToken :: TokenP -> Token
+getToken (TP t _) = t
+
+getTokens :: [TokenP] -> [Token]
+getTokens = map getToken
+
 instance Show TokenP where
     show (TP token pos) = show token ++ ":" ++ show pos
 
