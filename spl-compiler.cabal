@@ -44,6 +44,7 @@ test-suite spl-compiler-test
   hs-source-dirs:      test
   main-is:             Test.hs
   other-modules:       Text.Regex.ThompsonTest
+                     , Lexer.LexerTest
   build-depends:       base
                      , setenv
                      , tasty >= 0.7
