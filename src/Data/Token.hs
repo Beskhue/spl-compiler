@@ -24,6 +24,7 @@ data Token = TKeyword Keyword
              deriving (Show, Eq)
 
 data TokenP = TP { token :: Token, pos :: Pos }
+              deriving (Eq)
 
 getToken :: TokenP -> Token
 getToken (TP t _) = t
