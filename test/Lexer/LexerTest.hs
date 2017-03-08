@@ -1,8 +1,5 @@
 module Lexer.LexerTest where
 
-import Test.Tasty
-import Test.Tasty.QuickCheck as QC
-import Test.Tasty.HUnit as HU
 import Test.Tasty.Hspec as HSpec
 import Data.Token
 import Data.Pos
