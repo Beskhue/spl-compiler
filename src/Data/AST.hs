@@ -165,6 +165,7 @@ instance PrettyPrint Statement where
         ++ indent (prettyPrint ss)
         ++ "}"
     prettyPrint (StmtAssignment i e, _) = prettyPrint i ++ " = " ++ prettyPrint e ++ ";"
+    prettyPrint (StmtAssignmentField i f e, _) = prettyPrint i ++ prettyPrint f ++ " = " ++ prettyPrint e ++ ";"
     prettyPrint (StmtFunCall i es, _) = prettyPrint i ++ "(" ++ printArgs 0 es ++ ");"
         where
             printArgs :: Int -> [Expression] -> String
