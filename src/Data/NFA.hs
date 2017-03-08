@@ -133,8 +133,9 @@ evaluate nfa inputString = any (isAccepting nfa) (accessible nfa acc inputString
     where
         acc = lambdaClosure nfa [getInitialState nfa]
         accessible :: Eq a => NFA a -> [a] -> String -> [a]
-        accessible nfa states (i:ii) = accessible nfa (lambdaClosure nfa (transitions nfa states i)) ii
+        accessible _ [] _ = []
         accessible nfa states [] = lambdaClosure nfa (eosTransitions nfa states)
+        accessible nfa states (i:ii) = accessible nfa (lambdaClosure nfa (transitions nfa states i)) ii
 
 -- |Finds all substrings (expanding to the right) that are recognized by the NFA
 matches :: Eq a => NFA a -> String -> [String]
@@ -142,18 +143,19 @@ matches nfa inputString = snd (accessible nfa acc inputString "" [])
     where
         acc = lambdaClosure nfa [getInitialState nfa]
         accessible :: Eq a => NFA a -> [a] -> String -> String -> [String] -> ([a], [String])
+        accessible _ [] _ _ accepting = ([], accepting)
+        accessible nfa states [] consumed accepting =
+                    (
+                        eosStates,
+                        if any (isAccepting nfa) eosStates then accepting ++ [consumed] else accepting
+                    )
+                    where eosStates = lambdaClosure nfa (eosTransitions nfa states)
         accessible nfa states (i:ii) consumed accepting = accessible
             nfa
             (lambdaClosure nfa (transitions nfa states i))
             ii
             (consumed ++ [i])
             (if any (isAccepting nfa) states then accepting ++ [consumed] else accepting)
-        accessible nfa states [] consumed accepting =
-            (
-                eosStates,
-                if any (isAccepting nfa) eosStates then accepting ++ [consumed] else accepting
-            )
-            where eosStates = lambdaClosure nfa (eosTransitions nfa states)
 
 -- |Finds the longest substring recognized by the NFA (the substrings expand to the right, i.e. they match "^regex")
 longestMatch :: Eq a => NFA a -> String -> Maybe String
