@@ -15,7 +15,7 @@ spec_Lexer =
             getTokens (Lexer.lexDet "test" "") `shouldBe`  [TEOF]
         it "gives only TEOF for code within a comment" $
             getTokens (Lexer.lexDet "test" "/* Int a = 5; */") `shouldBe` [TEOF]
-        it "gives only TEOF for whitespace" $
+        it "gives only TEOF for whitespace (including line breaks)" $
             getTokens (Lexer.lexDet "test" " \t\t\n\n\f\f  ") `shouldBe` [TEOF]
         it "lexes open code that is between two block comments" $
             getTokens (Lexer.lexDet "test" "/* Comment1 */ a /* Comment2 */") `shouldBe` [TIdentifier "a", TEOF]
@@ -48,6 +48,25 @@ spec_Lexer =
         it "lexes an apostrophe as a character if and only if it is escaped" $ do
             getTokens (Lexer.lexDet "test" "'''") `shouldBe` []
             getTokens (Lexer.lexDet "test" "'\\''") `shouldBe` [TConstant (CChar '\''), TEOF]
+        it "lexes an empty list as a constant empty list" $
+            getTokens (Lexer.lexDet "test" "[]") `shouldBe` [TConstant CEmptyList, TEOF]
+        it "lexes types" $
+            getTokens (Lexer.lexDet "test" "Int Bool Char Void") `shouldBe` [
+                TType TypeInt, TType TypeBool, TType TypeChar, TType TypeVoid,
+                TEOF]
+        it "lexes operators" $
+            getTokens (Lexer.lexDet "test" "= + * / % == < > <= >= != && || : !") `shouldBe` [
+                TOperator OAssignment, TOperator OPlus, TOperator OMultiply, TOperator ODivide, TOperator OMod,
+                TOperator OEq, TOperator OLT, TOperator OGT, TOperator OLTE, TOperator OGTE, TOperator ONEq,
+                TOperator OAnd, TOperator OOr, TOperator OConcat, TOperator ONeg,
+                TEOF]
+        it "lexes punctuators" $
+            getTokens (Lexer.lexDet "test" "; ( ) { } [ ] , -> - ::") `shouldBe` [
+                TPunctuator PSeparator, TPunctuator PParenOpen, TPunctuator PParenClose,
+                TPunctuator PBraceOpen, TPunctuator PBraceClose,
+                TPunctuator PSquareBracketOpen, TPunctuator PSquareBracketClose, TPunctuator PComma,
+                TPunctuator PMapTo, TPunctuator PMinus, TPunctuator PFunType,
+                TEOF]
         it "keeps track of source position" $
             Lexer.lexDet "test" "a\n\na a a/*\n\naaa*/a" `shouldBe` [
                 TP (TIdentifier "a") (Pos "test" 1 1),
