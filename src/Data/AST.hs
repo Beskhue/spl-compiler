@@ -8,6 +8,8 @@ import Data.Pos
 class PrettyPrint a where
     prettyPrint :: a -> String
 
+class ASTEq a where
+    astEq :: a -> a -> Bool
 
 type SPL             = [Decl]
 
@@ -24,27 +26,43 @@ instance (PrettyPrint a) => PrettyPrint [a] where
             printMultiple 0 (s:ss) = prettyPrint s ++ printMultiple 1 ss
             printMultiple n (s:ss) = "\n" ++ prettyPrint s ++ printMultiple (n+1) ss
 
+instance (ASTEq a) => ASTEq [a] where
+    astEq [] [] = True
+    astEq [] _ = False
+    astEq _ [] = False
+    astEq (t1:ts1) (t2:ts2) = astEq t1 t2 && astEq ts1 ts2
+
 data Decl'           = DeclV VarDecl
                      | DeclF FunDecl
-                       deriving (Show)
+                       deriving (Eq, Show)
 type Decl            = (Decl', Pos)
 
 instance PrettyPrint Decl where
     prettyPrint (DeclV v, _) = prettyPrint v
     prettyPrint (DeclF f, _) = prettyPrint f
 
+instance (ASTEq Decl) where
+    astEq (DeclV v1, _) (DeclV v2, _) = astEq v1 v2
+    astEq (DeclF f1, _) (DeclF f2, _) = astEq f1 f2
+    astEq _ _ = False
+
 data VarDecl'        = VarDeclTyped Type Identifier Expression
                      | VarDeclUntyped Identifier Expression
-                       deriving (Show)
+                       deriving (Eq, Show)
 type VarDecl         = (VarDecl', Pos)
 
 instance PrettyPrint VarDecl where
     prettyPrint (VarDeclTyped t i e, _) = prettyPrint t ++ " " ++ prettyPrint i ++ " = " ++ prettyPrint e ++ ";"
     prettyPrint (VarDeclUntyped i e, _) = "Var " ++ prettyPrint i ++ " = " ++ prettyPrint e ++ ";"
 
+instance (ASTEq VarDecl) where
+    astEq (VarDeclTyped t1 i1 e1, _) (VarDeclTyped t2 i2 e2, _) = astEq t1 t2 && astEq i1 i2 && astEq e1 e2
+    astEq (VarDeclUntyped i1 e1, _) (VarDeclUntyped i2 e2, _) = astEq i1 i2 && astEq e1 e2
+    astEq _ _ = False
+
 data FunDecl'        = FunDeclTyped Identifier [Identifier] FunType [VarDecl] [Statement] -- [Identifier] are the arguments
                      | FunDeclUntyped Identifier [Identifier] [VarDecl] [Statement]
-                       deriving (Show)
+                       deriving (Eq, Show)
 type FunDecl         = (FunDecl', Pos)
 
 instance PrettyPrint FunDecl where
@@ -67,9 +85,14 @@ instance PrettyPrint FunDecl where
             printArgs 0 (arg:args) = prettyPrint arg ++ printArgs 1 args
             printArgs n (arg:args) = ", " ++ prettyPrint arg ++ printArgs 2 args
 
+instance (ASTEq FunDecl) where
+    astEq (FunDeclTyped i1 is1 t1 vs1 ss1, _) (FunDeclTyped i2 is2 t2 vs2 ss2, _) = astEq i1 i2 && astEq is1 is2 && astEq t1 t2 && astEq vs1 vs2 && astEq ss1 ss2
+    astEq (FunDeclUntyped i1 is1 vs1 ss1, _) (FunDeclUntyped i2 is2 vs2 ss2, _) = astEq i1 i2 && astEq is1 is2 && astEq vs1 vs2 && astEq ss1 ss2
+    astEq _ _ = False
+
 data FunType'        = FunType [Type] Type
                      | FunTypeVoid [Type]
-                       deriving (Show)
+                       deriving (Eq, Show)
 type FunType         = (FunType', Pos)
 
 instance PrettyPrint FunType where
@@ -81,13 +104,18 @@ instance PrettyPrint FunType where
             printArgsTypes [] = ""
             printArgsTypes (arg:args) = prettyPrint arg ++ " " ++ printArgsTypes args
 
+instance (ASTEq FunType) where
+    astEq (FunType ts1 t1, _) (FunType ts2 t2, _) = astEq ts1 ts2 && astEq t1 t2
+    astEq (FunTypeVoid ts1, _) (FunTypeVoid ts2, _) = astEq ts1 ts2
+    astEq _ _ = False
+
 data Type'           = TypeTuple Type Type
                      | TypeList Type
                      | TypeInt
                      | TypeBool
                      | TypeChar
                      | TypeIdentifier Identifier
-                       deriving (Show)
+                       deriving (Eq, Show)
 type Type            = (Type', Pos)
 
 instance PrettyPrint Type where
@@ -98,6 +126,15 @@ instance PrettyPrint Type where
     prettyPrint (TypeChar, _) = "Char"
     prettyPrint (TypeIdentifier i, _) = prettyPrint i
 
+instance (ASTEq Type) where
+    astEq (TypeTuple t1 t1', _) (TypeTuple t2 t2', _) = astEq t1 t2 && astEq t1' t2'
+    astEq (TypeList t1, _) (TypeList t2, _) = astEq t1 t2
+    astEq (TypeInt, _) (TypeInt, _) = True
+    astEq (TypeBool, _) (TypeBool, _) = True
+    astEq (TypeChar, _) (TypeChar, _) = True
+    astEq (TypeIdentifier i1, _) (TypeIdentifier i2, _) = astEq i1 i2
+    astEq _ _ = False
+
 data Statement'      = StmtIf Expression [Statement]
                      | StmtIfElse Expression [Statement] [Statement]
                      | StmtWhile Expression [Statement]
@@ -106,7 +143,7 @@ data Statement'      = StmtIf Expression [Statement]
                      | StmtFunCall Identifier [Expression]
                      | StmtReturn Expression
                      | StmtReturnVoid
-                       deriving (Show)
+                       deriving (Eq, Show)
 type Statement       = (Statement', Pos)
 
 instance PrettyPrint Statement where
@@ -137,6 +174,17 @@ instance PrettyPrint Statement where
     prettyPrint (StmtReturn e, _) = "return " ++ prettyPrint e ++ ";"
     prettyPrint (StmtReturnVoid, _) = "return;"
 
+instance (ASTEq Statement) where
+    astEq (StmtIf e1 ss1, _) (StmtIf e2 ss2, _) = astEq e1 e2 && astEq ss1 ss2
+    astEq (StmtIfElse e1 ss1 ss1', _) (StmtIfElse e2 ss2 ss2', _) = astEq e1 e2 && astEq ss1 ss2 && astEq ss1' ss2'
+    astEq (StmtWhile e1 ss1, _) (StmtWhile e2 ss2, _) = astEq e1 e2 && astEq ss1 ss2
+    astEq (StmtAssignment i1 e1, _) (StmtAssignment i2 e2, _) = astEq i1 i2 && astEq e1 e2
+    astEq (StmtAssignmentField i1 f1 e1, _) (StmtAssignmentField i2 f2 e2, _) = astEq i1 i2 && astEq f1 f2 && astEq e1 e2
+    astEq (StmtFunCall i1 es1, _) (StmtFunCall i2 es2, _) = astEq i1 i2 && astEq es1 es2
+    astEq (StmtReturn e1, _) (StmtReturn e2, _) = astEq e1 e2
+    astEq (StmtReturnVoid, _) (StmtReturnVoid, _) = True
+    astEq _ _ = False
+
 data Expression'     = ExprIdentifier Identifier
                      | ExprIdentifierField Identifier [Field]
                      | ExprFunCall Identifier [Expression]
@@ -144,7 +192,7 @@ data Expression'     = ExprIdentifier Identifier
                      | ExprTuple Expression Expression
                      | ExprUnaryOp UnaryOperator Expression
                      | ExprBinaryOp BinaryOperator Expression Expression
-                       deriving (Show)
+                       deriving (Eq, Show)
 type Expression      = (Expression', Pos)
 
 instance PrettyPrint Expression where
@@ -179,11 +227,21 @@ instance PrettyPrint Expression where
                     else prettyPrint e
                 _ -> prettyPrint e
 
+instance (ASTEq Expression) where
+    astEq (ExprIdentifier i1, _) (ExprIdentifier i2, _) = astEq i1 i2
+    astEq (ExprIdentifierField i1 f1, _) (ExprIdentifierField i2 f2, _) = astEq i1 i2 && astEq f1 f2
+    astEq (ExprFunCall i1 es1, _) (ExprFunCall i2 es2, _) = astEq i1 i2 && astEq es1 es2
+    astEq (ExprConstant c1, _) (ExprConstant c2, _) = astEq c1 c2
+    astEq (ExprTuple t1 t1', _) (ExprTuple t2 t2', _) = astEq t1 t2 && astEq t2 t2'
+    astEq (ExprUnaryOp uOp1 e1, _) (ExprUnaryOp uOp2 e2, _) = astEq uOp1 uOp2 && astEq e1 e2
+    astEq (ExprBinaryOp bOp1 e1 e1', _) (ExprBinaryOp bOp2 e2 e2', _) = astEq bOp1 bOp2 && astEq e1 e2 && astEq e1' e2'
+    astEq _ _ = False
+
 data Constant'       = ConstBool Bool
                      | ConstInt Int
                      | ConstChar Char
                      | ConstEmptyList
-                       deriving (Show)
+                       deriving (Eq, Show)
 type Constant        = (Constant', Pos)
 
 instance PrettyPrint Constant where
@@ -192,14 +250,24 @@ instance PrettyPrint Constant where
     prettyPrint (ConstChar c, _) = show c
     prettyPrint (ConstEmptyList, _) = "[]"
 
+instance (ASTEq Constant) where
+    astEq (ConstBool b1, _) (ConstBool b2, _) = b1 == b2
+    astEq (ConstInt i1, _) (ConstInt i2, _) = i1 == i2
+    astEq (ConstChar c1, _) (ConstChar c2, _) = c1 == c2
+    astEq (ConstEmptyList, _) (ConstEmptyList, _) = True
+    astEq _ _ = False
+
 data UnaryOperator'  = UnaryOpNeg
                      | UnaryOpSubtr
-                       deriving (Show)
+                       deriving (Eq, Show)
 type UnaryOperator   = (UnaryOperator', Pos)
 
 instance PrettyPrint UnaryOperator where
     prettyPrint (UnaryOpNeg, _) = "!"
     prettyPrint (UnaryOpSubtr, _) = "-"
+
+instance (ASTEq UnaryOperator) where
+    astEq (uOp1, _) (uOp2, _) = uOp1 == uOp2
 
 data BinaryOperator' = BinaryOpOr
                      | BinaryOpAnd
@@ -215,7 +283,7 @@ data BinaryOperator' = BinaryOpOr
                      | BinaryOpMult
                      | BinaryOpDiv
                      | BinaryOpMod
-                       deriving (Show)
+                       deriving (Eq, Show)
 type BinaryOperator  = (BinaryOperator', Pos)
 
 instance PrettyPrint BinaryOperator where
@@ -234,11 +302,14 @@ instance PrettyPrint BinaryOperator where
     prettyPrint (BinaryOpDiv, _) = "/"
     prettyPrint (BinaryOpMod, _) = "%"
 
+instance (ASTEq BinaryOperator) where
+    astEq (bOp1, _) (bOp2, _) = bOp1 == bOp2
+
 data Field'          = FieldHd
                      | FieldTl
                      | FieldFst
                      | FieldSnd
-                       deriving (Show)
+                       deriving (Eq, Show)
 type Field           = (Field', Pos)
 
 instance PrettyPrint Field where
@@ -247,12 +318,18 @@ instance PrettyPrint Field where
     prettyPrint (FieldFst, _) = ".fst"
     prettyPrint (FieldSnd, _) = ".snd"
 
+instance (ASTEq Field) where
+    astEq (f1, _) (f2, _) = f1 == f2
+
 newtype Identifier'  = Identifier String
-                       deriving (Show)
+                       deriving (Eq, Show)
 type Identifier      = (Identifier', Pos)
 
 instance PrettyPrint Identifier where
     prettyPrint (Identifier i, _) = i
+
+instance (ASTEq Identifier) where
+    astEq (Identifier s1, _) (Identifier s2, _) = s1 == s2
 
 binaryOperatorPrecedence' :: BinaryOperator' -> Int
 binaryOperatorPrecedence' BinaryOpOr = 1
