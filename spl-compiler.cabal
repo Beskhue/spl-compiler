@@ -18,10 +18,11 @@ library
   exposed-modules:     Lib
                      , Data.Pos
                      , Data.Token
+                     , Data.AST
                      , Data.NFA
                      , Text.Regex.Thompson
                      , Lexer.Lexer
-                     , Parser.Parser
+                     , Parser.SPLParser
   build-depends:       base >= 4.7 && < 5
                      , containers
                      , transformers
