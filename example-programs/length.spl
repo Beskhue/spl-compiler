@@ -1,0 +1,7 @@
+length (list) :: [Int] -> Int {
+    if (list == []) {
+        return 0;
+    } else {
+        return 1 + length(list.tl);
+    }
+}

@@ -1,0 +1,11 @@
+last (list) :: [Int] -> Int {
+    if (length(list) == 0) {
+        return -1;
+    } else {
+        if (length(list) == 1) {
+            return list.hd;
+        } else {
+            return last(list.tl);
+        }
+    }
+}

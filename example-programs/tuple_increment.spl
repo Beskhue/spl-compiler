@@ -1,0 +1,7 @@
+tuple_increment (n) :: (Int, Int) -> (Int, Int)
+{
+    n.fst = n.fst + 1;
+    n.snd = n.snd + 1;
+	
+    return n;
+}
