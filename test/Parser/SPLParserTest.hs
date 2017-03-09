@@ -30,8 +30,8 @@ spec_SPLParser =
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
             rawSPL <- readFile "example-programs/tuple_increment.spl"
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-            --rawSPL <- readFile "example-programs/precedence_assoc.spl"
-            --parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
+            rawSPL <- readFile "example-programs/precedence_assoc.spl"
+            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
             rawSPL <- readFile "example-programs/last.spl"
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
             rawSPL <- readFile "example-programs/length.spl"
@@ -40,3 +40,5 @@ spec_SPLParser =
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
             rawSPL <- readFile "example-programs/fib.spl"
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
+            --rawSPL <- readFile "example-programs/parentheses.spl"
+            --parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
