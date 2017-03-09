@@ -39,7 +39,7 @@ type Decl            = (Decl', Pos)
 
 instance PrettyPrint Decl where
     prettyPrint (DeclV v, _) = prettyPrint v
-    prettyPrint (DeclF f, _) = prettyPrint f
+    prettyPrint (DeclF f, _) = prettyPrint f ++ "\n"
 
 instance (ASTEq Decl) where
     astEq (DeclV v1, _) (DeclV v2, _) = astEq v1 v2
@@ -69,13 +69,13 @@ instance PrettyPrint FunDecl where
     prettyPrint (f, _) = case f of
         FunDeclTyped name args fType v s ->
             prettyPrint name
-            ++ " (" ++ printArgs 0 args ++ ") :: " ++ prettyPrint fType ++ " {\n"
+            ++ " (" ++ printArgs 0 args ++ ") :: " ++ prettyPrint fType ++ "\n{\n"
             ++ indent (prettyPrint v) ++ (if length v > 0 then "\n\n" else "")
             ++ indent (prettyPrint s) ++ "\n"
             ++ "}"
         FunDeclUntyped name args v s ->
             prettyPrint name
-            ++ " (" ++ printArgs 0 args ++ ") {\n"
+            ++ " (" ++ printArgs 0 args ++ ")\n{\n"
             ++ indent (prettyPrint v) ++ (if length v > 0 then "\n\n" else "")
             ++ indent (prettyPrint s) ++ "\n"
             ++ "}"
@@ -149,21 +149,21 @@ type Statement       = (Statement', Pos)
 instance PrettyPrint Statement where
     prettyPrint (StmtIf e ss, _) = "if ("
         ++ prettyPrint e
-        ++ ") {"
+        ++ ") {\n"
         ++ indent (prettyPrint ss)
-        ++ "}"
+        ++ "\n}"
     prettyPrint (StmtIfElse e ss1 ss2, _) = "if ("
         ++ prettyPrint e
-        ++ ") {"
+        ++ ") {\n"
         ++ indent (prettyPrint ss1)
-        ++ "} else {"
+        ++ "\n} else {\n"
         ++ indent (prettyPrint ss2)
-        ++ "}"
+        ++ "\n}"
     prettyPrint (StmtWhile e ss, _) = "while ("
         ++ prettyPrint e
-        ++ ") {"
+        ++ ") {\n"
         ++ indent (prettyPrint ss)
-        ++ "}"
+        ++ "\n}"
     prettyPrint (StmtAssignment i e, _) = prettyPrint i ++ " = " ++ prettyPrint e ++ ";"
     prettyPrint (StmtAssignmentField i f e, _) = prettyPrint i ++ prettyPrint f ++ " = " ++ prettyPrint e ++ ";"
     prettyPrint (StmtFunCall i es, _) = prettyPrint i ++ "(" ++ printArgs 0 es ++ ");"
@@ -214,11 +214,11 @@ instance PrettyPrint Expression where
     prettyPrint (ExprBinaryOp op e1 e2, _) = case binaryOperatorAssociativity op of
         ALeft ->
             print' (binaryOperatorPrecedence op - 1) e1
-            ++ prettyPrint op
+            ++ " " ++ prettyPrint op ++ " "
             ++ print' (binaryOperatorPrecedence op) e2
         ARight ->
             print' (binaryOperatorPrecedence op) e1
-            ++ prettyPrint op
+            ++ " " ++ prettyPrint op ++ " "
             ++ print' (binaryOperatorPrecedence op - 1) e2
         where
             print' :: Int -> Expression -> String
