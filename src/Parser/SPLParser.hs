@@ -330,7 +330,7 @@ pFunArgs = (
 pExpressionUnaryOperator :: Parser AST.Expression
 pExpressionUnaryOperator = do
     (unaryOp, p) <- pUnaryOperator
-    expression <- pExpression
+    expression <- pExprBase
     return (AST.ExprUnaryOp (unaryOp, p) expression, p)
 
 pExpressionConst :: Parser AST.Expression
