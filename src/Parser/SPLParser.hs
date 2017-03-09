@@ -258,7 +258,7 @@ pExpression = pExpression' 1
                                 pLeftAssocExpression (expr, p) precedence
                             AST.ARight -> do -- Right associativity
                                 pBinaryOperator -- Consume binary operator
-                                expr' <- pExpression
+                                expr' <- pExpression' precedence
                                 return (AST.ExprBinaryOp binaryOperator (expr, p) expr', p)
                     else return (expr, p)
             ) <|> return (expr, p)}
