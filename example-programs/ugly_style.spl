@@ -1,0 +1,1 @@
+f(n,b)::Int Bool->Int{if(b){return n+1;}else{return n;}}main()::->Void{f(5,True);}
