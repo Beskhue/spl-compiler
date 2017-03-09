@@ -24,7 +24,7 @@ spec_SPLParser =
                         Pos "" 1 1), Pos "" 1 1)
             ]
         it "parses left associativity" $
-            prettyPrint (parseDet "Int n3 = ((((1 - 2) + 3) - 4) + 5) - 6;") `shouldBe` "Int n3 = 1-2+3-4+5-6;"
+            prettyPrint (parseDet "Int n3 = ((((1 - 2) + 3) - 4) + 5) - 6;") `shouldBe` "Int n3 = 1 - 2 + 3 - 4 + 5 - 6;"
         it "programs survive a parse -> pretty print round trip" $ do
             rawSPL <- readFile "example-programs/fac.spl"
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
@@ -40,5 +40,10 @@ spec_SPLParser =
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
             rawSPL <- readFile "example-programs/fib.spl"
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
+            rawSPL <- readFile "example-programs/precedence_parentheses.spl"
+            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
+            rawSPL <- readFile "example-programs/ugly_style.spl"
+            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
+
             --rawSPL <- readFile "example-programs/performance_test_parentheses.spl"
             --parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
