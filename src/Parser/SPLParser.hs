@@ -265,7 +265,7 @@ pExpression = pExpression' 1
         pLeftAssocExpression :: AST.Expression -> Int -> Parser AST.Expression
         pLeftAssocExpression (e1, p) precedence = do {
                 bOp <- try (lookAhead pBinaryOperator);
-                if AST.binaryOperatorPrecedence bOp == precedence
+                if AST.binaryOperatorPrecedence bOp == precedence && AST.binaryOperatorAssociativity bOp == AST.ALeft
                     then do
                         pBinaryOperator -- Consume binary operator
                         e2 <- pExpression' (precedence + 1);

@@ -352,6 +352,7 @@ binaryOperatorPrecedence :: BinaryOperator -> Int
 binaryOperatorPrecedence (bOp, _) = binaryOperatorPrecedence' bOp
 
 data Associativity = ALeft | ARight
+                     deriving (Eq)
 
 binaryOperatorAssociativity' :: BinaryOperator' -> Associativity
 binaryOperatorAssociativity' BinaryOpOr = ALeft
