@@ -40,5 +40,5 @@ spec_SPLParser =
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
             rawSPL <- readFile "example-programs/fib.spl"
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-            --rawSPL <- readFile "example-programs/parentheses.spl"
+            --rawSPL <- readFile "example-programs/performance_test_parentheses.spl"
             --parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
