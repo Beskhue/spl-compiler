@@ -1,3 +1,5 @@
+{-# LANGUAGE BangPatterns #-}
+
 module Lexer.Lexer where
 
 import Control.Monad
@@ -115,7 +117,7 @@ First, the outputs of all recognizers that recognized the longest input string i
 To tie-break, the output of a single recognizer that has the highest priority is used.
 -}
 recognize :: [RecognizerPriority] -> String -> Maybe (String, Token)
-recognize recognizers input = fst $ argmax (
+recognize !recognizers !input = fst $ argmax (
         \(_, priority) -> priority
     ) maxRecognizers
     where
