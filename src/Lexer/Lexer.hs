@@ -106,7 +106,7 @@ recognizers = [ -- End of file
                 constructRecognizer 1 "'[^']'|'\\\\''" (\s -> TConstant $ CChar $ s !! (length s - 2)),
                 constructRecognizer 1 "\\[\\]" (\s -> TConstant CEmptyList),
                 -- Identifiers
-                constructRecognizer 0 "[a-zA-Z]([_a-zA-Z0-9])*" (\s -> TIdentifier s)
+                constructRecognizer 0 "\\w(\\w|[_0-9])*" (\s -> TIdentifier s)
                ]
 
 {-

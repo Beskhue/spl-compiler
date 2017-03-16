@@ -26,6 +26,9 @@ spec_Lexer =
                 TIdentifier "a",
                 TField FHd, TField FFst, TField FSnd, TField FTl,
                 TEOF]
+        it "handles unicode letters when lexing identifiers" $
+            getTokens (Lexer.lexDet "test" "молоко мо_loko9") `shouldBe` [
+                TIdentifier "молоко", TIdentifier "мо_loko9", TEOF]
         it "lexes numbers as integer constants" $
             getTokens (Lexer.lexDet "test" "1234567890") `shouldBe` [TConstant (CInt 1234567890), TEOF]
         it "lexes hexadecimal numbers as integer constants" $
