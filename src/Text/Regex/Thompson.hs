@@ -16,8 +16,6 @@ http://www.diku.dk/hjemmesider/ansatte/henglein/papers/cox2007.pdf
 ThompsonTest, S. (2000). Regular expressions and automata using Haskell.
 http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.650.7393&rep=rep1&type=pdf
 
-TODO: group matching, https://swtch.com/~rsc/regexp/regexp2.html
-
 -}
 
 module Text.Regex.Thompson where
