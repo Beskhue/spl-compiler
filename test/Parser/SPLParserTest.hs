@@ -44,6 +44,7 @@ spec_SPLParser =
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
             rawSPL <- readFile "example-programs/ugly_style.spl"
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-
+            rawSPL <- readFile "example-programs/unicode.spl"
+            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
             --rawSPL <- readFile "example-programs/performance_test_parentheses.spl"
             --parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
