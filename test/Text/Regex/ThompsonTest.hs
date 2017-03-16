@@ -93,6 +93,12 @@ spec_Regex = do
             let a = Regex.compile("молоко") in do
                 Regex.evaluate a "молоко" `shouldBe` True
                 Regex.evaluate a "moloko" `shouldBe` False
+        it "recognizes the letter class" $ do
+            let a = Regex.compile "\\w+" in do
+                Regex.evaluate a "moloko" `shouldBe` True
+                Regex.evaluate a "молоко" `shouldBe` True
+                Regex.evaluate a "м0локо" `shouldBe` False
+                Regex.evaluate a "√" `shouldBe` False -- not a letter
     describe "Regex.longestMatch" $ do
         it "recognizes the longest match is not necessarily the entire string" $ do
             let a = Regex.compile("(aaa)+") in do

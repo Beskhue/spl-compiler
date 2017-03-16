@@ -26,11 +26,13 @@ import Control.Monad.Trans.State.Lazy
 import Control.Monad.Trans.Except
 import Data.Functor.Identity
 import Data.NFA as NFA
+import qualified Data.Char as Char
 
 data Regex = Lambda
            | EOS
            | All
            | Literal Char
+           | ClassLetter
            | Union Regex Regex
            | Concat Regex Regex
            | Star Regex
@@ -79,6 +81,7 @@ data Token = TUnion
              | TEOS
              | TEOF
              | TChar Char
+             | TClassLetter
                deriving (Show, Eq)
 
 -- |Tokenize a character
@@ -113,6 +116,7 @@ tokenToChar TRangeDelimiter = '-'
 tokenToChar TEscape = '\\'
 tokenToChar TEOS = '$'
 tokenToChar TEOF = '\0'
+tokenToChar TClassLetter = undefined
 tokenToChar (TChar c) = c
 
 -- |Tokenize a string
@@ -121,6 +125,7 @@ tokenize s = cleanupEscapes [token c | c <- s] ++ [TEOF]
     where
         -- |Cleanup escapes in a regex (e.g. [.., (TEscape, '\\'), (TStar, '*'), ..] becomes [.., (TChar, '*'), ..])
         cleanupEscapes :: [Token] -> [Token]
+        cleanupEscapes (TEscape : TChar 'w' : ts) = TClassLetter : cleanupEscapes ts
         cleanupEscapes (TEscape : t : ts) = TChar (tokenToChar t) : cleanupEscapes ts
         cleanupEscapes (t : ts) = t : cleanupEscapes ts
         cleanupEscapes [] = []
@@ -133,7 +138,7 @@ tokenize s = cleanupEscapes [token c | c <- s] ++ [TEOF]
                             | <term>
     <term>              ::= <basic-regex> <term> | <basic-regex>
     <basic-regex>       ::= <base> '*' | <base> '+' | <base> '?' | <base> | '$'
-    <base>              ::= <group> | <set> | '.' | <char>
+    <base>              ::= <group> | <set> | '.' | <char> | '\w'
     <group>             ::= '(' <regex> ')'
     <set>               ::= '[' <set-items> ']'
     <pos-set>           ::= <set-items>
@@ -260,6 +265,9 @@ pBase = do
         TAll -> do
             eat TAll
             return All
+        TClassLetter -> do
+            eat TClassLetter
+            return ClassLetter
         _ -> pLiteral
 
 pGroup :: ParseT Regex -- <group> -> '(' <regex> ')'
@@ -363,6 +371,11 @@ build (Concat r1 r2) = buildConcat (build r1) (build r2)
 build All = NFA.NFA
     [0, 1]
     [NFA.ConditionalTransition 0 (\c -> True) 1]
+    0
+    [1]
+build ClassLetter = NFA.NFA
+    [0, 1]
+    [NFA.ConditionalTransition 0 Char.isLetter 1]
     0
     [1]
 build (Star r) = buildStar (build r)
