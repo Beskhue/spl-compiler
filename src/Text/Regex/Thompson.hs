@@ -409,18 +409,6 @@ build (NegSet setItems) = NFA.NFA
                           SetLiteral c -> [c]
                           SetRange c1 c2 -> [c1 .. c2]
                   ) | setItem <- setItems]
-{-
-build (Set setItems) = NFA.NFA
-    [0, 1]
-    (concat [setItemToTransition setItem | setItem <- setItems])
-    0
-    [1]
-        where
-        setItemToTransition :: SetItem -> [NFA.Transition Int]
-        setItemToTransition (SetLiteral c) = [NFA.Transition 0 c 1]
-        setItemToTransition (SetRange c1 c2) = [NFA.Transition 0 c 1 | c <- [c1 .. c2]]
--}
-
 buildUnion :: NFA.NFA Int -> NFA.NFA Int -> NFA.NFA Int
 buildUnion (NFA.NFA states1 trans1 init1 accs1) (NFA.NFA states2 trans2 init2 accs2) =
     let
