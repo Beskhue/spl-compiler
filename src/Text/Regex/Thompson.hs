@@ -6,14 +6,18 @@ License: MIT
 Maintainer: thomas@kepow.org
 Stability: experimental
 
-A regex engine based on ThompsonTest's construction
+A regex engine based on Thompson's construction.
+
+Implements the basics (union '|', concatenation, literals, zero-or-more '*'), additionally implements escaping of
+operators (e.g. '\|'), option (0 or 1, '?'), characters sets (e.g. [a-zA-Z0-9]), negative character sets (e.g.
+[^a-zA-Z0-9]), (unicode) letter class '\w', and the end-of-string marker '$'.
 
 See:
 Cox, R. (2007). Regular expression matching can be simple and fast (but is slow in java, perl, php, python,
 ruby, ...).
 http://www.diku.dk/hjemmesider/ansatte/henglein/papers/cox2007.pdf
 
-ThompsonTest, S. (2000). Regular expressions and automata using Haskell.
+Thompson, S. (2000). Regular expressions and automata using Haskell.
 http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.650.7393&rep=rep1&type=pdf
 
 -}
