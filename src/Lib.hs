@@ -6,6 +6,7 @@ import Data.Token
 import Data.AST as AST
 import qualified Lexer.Lexer as Lexer
 import qualified Parser.SPLParser as SPLParser
+import qualified TypeSystem.Checker as Checker
 
 getFilePath :: IO String
 getFilePath = do
@@ -25,7 +26,9 @@ compile = do
         Left e    -> putStrLn $ show e
         Right ts -> case SPLParser.parse ts of
             Left e -> putStrLn $ show e
-            Right ast -> putStrLn $ show ast
+            Right ast -> case Checker.check ast of
+                Left e -> putStrLn $ show e
+                Right b -> putStrLn $ show b
 
 prettyPrint :: IO()
 prettyPrint = do

@@ -23,6 +23,7 @@ library
                      , Text.Regex.Thompson
                      , Lexer.Lexer
                      , Parser.SPLParser
+                     , TypeSystem.Checker
   build-depends:       base >= 4.7 && < 5
                      , containers
                      , transformers
