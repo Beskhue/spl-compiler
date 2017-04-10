@@ -119,12 +119,11 @@ data TInfCtx = TInfCtx {}
 data TInfState = TInfState { tInfSupply :: Int,
                              tInfSubst :: Substitution}
 
-type TInf a = ExceptT String (ReaderT TInfCtx (StateT TInfState IO)) a
+-- type TInf a = ExceptT String (ReaderT TInfCtx (StateT TInfState IO)) a
+type TInf a = ExceptT String (ReaderT TInfCtx (State TInfState)) a
 
-runTInf :: TInf a -> IO (Either String a, TInfState)
-runTInf t = do
-    (res, st) <- runStateT (runReaderT (runExceptT t) initTInfCtx) initTInfState
-    return (res, st)
+runTInf :: TInf a -> (Either String a, TInfState)
+runTInf t = runState (runReaderT (runExceptT t) initTInfCtx) initTInfState
     where
         initTInfCtx = TInfCtx{}
         initTInfState = TInfState { tInfSupply = 0,
