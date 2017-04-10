@@ -79,7 +79,7 @@ getDecl = do
 check :: AST.SPL -> Either TypingErrorP Bool
 check ast = runExcept $ evalStateT (advance >> tChAST) (undefined, ast)
 
--- |Type check a (global) declaration
+-- |Type check the (global) declarations
 tChAST :: TypingT Bool
 tChAST = do
     (decl, p) <- getDecl
