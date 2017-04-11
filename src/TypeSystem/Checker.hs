@@ -195,7 +195,9 @@ tInfConst :: TypeCtx -> AST.Constant -> TInf (Substitution, Type)
 tInfConst _ (AST.ConstBool _, _) = return (nullSubstitution, TBool)
 tInfConst _ (AST.ConstInt _, _) = return (nullSubstitution, TInt)
 tInfConst _ (AST.ConstChar _, _) = return (nullSubstitution, TChar)
--- tInfConst _ (AST.ConstEmptyList, _) = return (nullSubstitution, TChar)
+tInfConst _ (AST.ConstEmptyList, _) = do
+    tVar <- newTypeVar "a"
+    return (nullSubstitution, TList tVar)
 
 -- |Perform type inference on an AST expression
 tInfExpr :: TypeCtx -> AST.Expression -> TInf (Substitution, Type)
