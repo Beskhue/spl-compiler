@@ -16,6 +16,8 @@ https://github.com/mgrabmueller/AlgorithmW
 
 module TypeSystem.Checker where
 
+import qualified Debug.Trace as Trace
+
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 
@@ -32,12 +34,24 @@ import qualified Data.AST as AST
 check :: AST.SPL -> Either Int Int
 check spl = undefined
 
-typeInference :: (TypeCtx -> a -> TInf (Substitution, Type)) -> Map.Map String Scheme -> a -> TInf Type
-typeInference tInf' ctx e = do
-    (s, t) <- tInf' (TypeCtx ctx) e
-    return t
+typeInferenceDet :: (TypeCtx -> a -> TInf (Substitution, Type)) -> Map.Map String Scheme -> a -> (Substitution, Type)
+typeInferenceDet tInf' ctx e =
+    case typeInference tInf' ctx e of
+        Left err -> Trace.trace (show err) undefined
+        Right t -> t
 
-typeInferenceExpr :: Map.Map String Scheme -> AST.Expression -> TInf Type
+onlyType :: Either String (Substitution, Type) -> Either String Type
+onlyType res =
+    case res of
+        Left err -> Left err
+        Right (_, t) -> Right t
+
+typeInference :: (TypeCtx -> a -> TInf (Substitution, Type)) -> Map.Map String Scheme -> a -> Either String (Substitution, Type)
+typeInference tInf' ctx e = res
+    where
+        (res, _) = runTInf $ tInf' (TypeCtx ctx) e
+
+typeInferenceExpr :: Map.Map String Scheme -> AST.Expression ->  Either String (Substitution, Type)
 typeInferenceExpr = typeInference tInfExpr
 --typeInferenceExpr ctx e = do
 --    s, t) <- tInfExpr (TypeCtx ctx) e
