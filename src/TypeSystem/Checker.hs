@@ -204,8 +204,9 @@ mgu (TFunction arg body) (TFunction arg' body') = do
     return $ composeSubstitution s1 s2
 mgu (TVar u) t           = varBind u t
 mgu t (TVar u)           = varBind u t
-mgu TInt TInt            = return nullSubstitution
 mgu TBool TBool          = return nullSubstitution
+mgu TInt TInt            = return nullSubstitution
+mgu TChar TChar          = return nullSubstitution
 mgu (TList t) (TList t') = mgu t t'
 mgu t1 t2                = throwError $ "types do not unify: " ++ show t1 ++ " and " ++ show t2
 
