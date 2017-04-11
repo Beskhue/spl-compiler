@@ -198,16 +198,16 @@ varBind u t
 
 -- |Unify two types (using the most general unifier)
 mgu :: Type -> Type -> TInf Substitution
-mgu (TFunction arg body) (TFunction arg' body') = do
-    s1 <- mgu arg arg'
-    s2 <- mgu (apply s1 body) (apply s1 body')
-    return $ composeSubstitution s1 s2
 mgu (TVar u) t           = varBind u t
 mgu t (TVar u)           = varBind u t
 mgu TBool TBool          = return nullSubstitution
 mgu TInt TInt            = return nullSubstitution
 mgu TChar TChar          = return nullSubstitution
 mgu (TList t) (TList t') = mgu t t'
+mgu (TFunction arg body) (TFunction arg' body') = do
+    s1 <- mgu arg arg'
+    s2 <- mgu (apply s1 body) (apply s1 body')
+    return $ composeSubstitution s1 s2
 mgu t1 t2                = throwError $ "types do not unify: " ++ show t1 ++ " and " ++ show t2
 
 ------------------------------------------------------------------------------------------------------------------------
