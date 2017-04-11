@@ -100,8 +100,11 @@ composeSubstitution s1 s2 = (Map.map (apply s1) s2) `Map.union` s1
 -- |A type context (or environment) is a mapping from term variables to type schemes
 newtype TypeCtx = TypeCtx (Map.Map String Scheme)
 
+emptyMap :: Map.Map String Scheme
+emptyMap = Map.empty
+
 emptyCtx :: TypeCtx
-emptyCtx = TypeCtx (Map.empty)
+emptyCtx = TypeCtx (emptyMap)
 
 -- |Remove a term variable from the context
 remove :: TypeCtx -> String -> TypeCtx
