@@ -204,6 +204,10 @@ mgu TBool TBool          = return nullSubstitution
 mgu TInt TInt            = return nullSubstitution
 mgu TChar TChar          = return nullSubstitution
 mgu (TList t) (TList t') = mgu t t'
+mgu (TTuple t1 t2) (TTuple t1' t2') = do
+    s1 <- mgu t1 t1'
+    s2 <- mgu (apply s1 t2) (apply s1 t2')
+    return $ composeSubstitution s1 s2
 mgu (TFunction arg body) (TFunction arg' body') = do
     s1 <- mgu arg arg'
     s2 <- mgu (apply s1 body) (apply s1 body')
