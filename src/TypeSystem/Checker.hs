@@ -123,14 +123,19 @@ generalize ctx t =
 
 ------------------------------------------------------------------------------------------------------------------------
 
--- |Handle type initialization (such as generating fresh variable names for new type variables)
+-- |The type inference context (shared in TInf using ReaderT)
 data TInfCtx = TInfCtx {}
+
+-- |The type inference state consists of the fresh type name generator state and the current type substitution
 data TInfState = TInfState { tInfSupply :: Int,
                              tInfSubst :: Substitution}
 
 -- type TInf a = ExceptT String (ReaderT TInfCtx (StateT TInfState IO)) a
 type TInf a = ExceptT String (ReaderT TInfCtx (State TInfState)) a
 
+-- |The type inference runner. Results in a tuple of either an error and the type inference result, and the final type
+-- inference state. The type inference result will generally be a tuple of a substitution (the type constraints) and the
+-- type of an AST branch.
 runTInf :: TInf a -> (Either String a, TInfState)
 runTInf t = runState (runReaderT (runExceptT t) initTInfCtx) initTInfState
     where
@@ -140,7 +145,7 @@ runTInf t = runState (runReaderT (runExceptT t) initTInfCtx) initTInfState
 
 ------------------------------------------------------------------------------------------------------------------------
 
--- |Generate a new type var using the type name supplier
+-- |Generate a new type variable using the type name supplier
 newTypeVar :: String -> TInf Type
 newTypeVar prefix = do
     s <- get
@@ -177,15 +182,18 @@ mgu t1 t2       = throwError $ "types do not unify: " ++ show t1 ++ " and " ++ s
 
 ------------------------------------------------------------------------------------------------------------------------
 
+-- |Get the name of an AST identifier
 idName :: AST.Identifier -> String
 idName (AST.Identifier i, _) = i
 
+-- |Perform type inference on an AST constant
 tInfConst :: TypeCtx -> AST.Constant -> TInf (Substitution, Type)
 tInfConst _ (AST.ConstBool _, _) = return (nullSubstitution, TBool)
 tInfConst _ (AST.ConstInt _, _) = return (nullSubstitution, TInt)
 tInfConst _ (AST.ConstChar _, _) = return (nullSubstitution, TChar)
--- tInfCosnt _ (AST.ConstEmptyList, _) = return (nullSubstitution, TChar)
+-- tInfConst _ (AST.ConstEmptyList, _) = return (nullSubstitution, TChar)
 
+-- |Perform type inference on an AST expression
 tInfExpr :: TypeCtx -> AST.Expression -> TInf (Substitution, Type)
 tInfExpr (TypeCtx ctx) (AST.ExprIdentifier id, _) =
     let i = idName id in
