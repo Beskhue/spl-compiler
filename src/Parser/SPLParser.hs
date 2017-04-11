@@ -1,5 +1,6 @@
 module Parser.SPLParser where
 
+import qualified Debug.Trace as Trace
 import Data.Token
 import Data.Pos
 import qualified Text.Parsec.Pos as SourcePos
@@ -20,7 +21,7 @@ parseDet = parseDet' pSPL
 
 parseDet' :: Parser a -> [TokenP] -> a
 parseDet' parser ts = case Parser.SPLParser.parse' parser ts of
-    Left _ -> undefined
+    Left err -> Trace.trace (show err) undefined
     Right ast -> ast
 
 parse :: [TokenP] -> Either Parsec.ParseError AST.SPL
