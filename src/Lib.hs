@@ -1,6 +1,7 @@
 module Lib where
 
 import System.Environment
+import System.IO
 import Text.Parsec.Prim
 import Data.Token
 import Data.AST as AST
@@ -20,7 +21,7 @@ getFilePath = do
 compile :: IO ()
 compile = do
     filePath <- getFilePath
-    rawSPL <- readFile filePath
+    rawSPL <- readUTF8File filePath
     putStrLn $ "Read '" ++ filePath ++ "'."
     case Lexer.lex filePath rawSPL of
         Left e    -> putStrLn $ show e
@@ -33,7 +34,7 @@ compile = do
 prettyPrint :: IO()
 prettyPrint = do
     filePath <- getFilePath
-    rawSPL <- readFile filePath
+    rawSPL <- readUTF8File filePath
     putStrLn $ "Read '" ++ filePath ++ "'."
     case Lexer.lex filePath rawSPL of
         Left e    -> putStrLn $ show e
@@ -47,3 +48,9 @@ parseTest p s =
         Left e    -> putStrLn $ show e
         Right ts -> SPLParser.parseTest p ts
 
+-- |Read a file in UTF8 encoding
+readUTF8File :: String -> IO String
+readUTF8File filePath = do
+    inputHandle <- openFile filePath ReadMode
+    hSetEncoding inputHandle utf8
+    hGetContents inputHandle
