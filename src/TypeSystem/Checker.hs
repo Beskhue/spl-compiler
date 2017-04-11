@@ -68,6 +68,10 @@ instance Types Type where
     freeTypeVars (TTuple t1 t2) = Set.union (freeTypeVars t1) (freeTypeVars t2)
     freeTypeVars (TFunction arg body) = Set.union (freeTypeVars arg) (freeTypeVars body)
 
+    apply s (TVar v) =
+        case Map.lookup v s of
+            Just t -> t
+            _ -> TVar v
     apply s (TList l) = TList $ apply s l
     apply s (TTuple t1 t2) = TTuple (apply s t1) (apply s t2)
     apply s (TFunction arg body) = TFunction (apply s arg) (apply s body)
