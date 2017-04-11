@@ -16,12 +16,18 @@ data AST' = AChar Char
            deriving (Show)
 
 parseDet :: [TokenP] -> AST.SPL
-parseDet ts = case Parser.SPLParser.parse ts of
-    Left _ -> fail "Parsing failed."
+parseDet = parseDet' pSPL
+
+parseDet' :: Parser a -> [TokenP] -> a
+parseDet' parser ts = case Parser.SPLParser.parse' parser ts of
+    Left _ -> undefined
     Right ast -> ast
 
 parse :: [TokenP] -> Either Parsec.ParseError AST.SPL
-parse = Text.Parsec.Prim.parse pSPL ""
+parse = parse' pSPL
+
+parse' :: Parser a -> [TokenP] -> Either Parsec.ParseError a
+parse' parser = Text.Parsec.Prim.parse parser ""
 
 posToSourcePos :: Pos -> SourcePos.SourcePos
 posToSourcePos (Pos name line column) = SourcePos.newPos name line column
