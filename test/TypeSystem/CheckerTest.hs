@@ -33,8 +33,10 @@ spec_Checker =
                 case t of
                     Right (Checker.TList (Checker.TVar _)) -> True
                     _ -> False)
-        it "produces an error for '1 : 'a' : []' " $
+        it "produces an error for '1 : 'a' : []'" $
             onlyTypeEmptyTInfExpr (expr "1 : 'a' : [];") `shouldSatisfy` isLeft
+        it "produces an error for '(1 : []) : (True : []) : []'" $
+            onlyTypeEmptyTInfExpr (expr "(1 : []) : (True : []) : [];") `shouldSatisfy` isLeft
         it "produces an error for ''a' + 'b''" $
             onlyTypeEmptyTInfExpr (expr  "'a' + 'b';") `shouldSatisfy` isLeft
 
