@@ -32,10 +32,16 @@ import qualified Data.AST as AST
 check :: AST.SPL -> Either Int Int
 check spl = undefined
 
+typeInference :: (TypeCtx -> a -> TInf (Substitution, Type)) -> Map.Map String Scheme -> a -> TInf Type
+typeInference tInf' ctx e = do
+    (s, t) <- tInf' (TypeCtx ctx) e
+    return t
+
 typeInferenceExpr :: Map.Map String Scheme -> AST.Expression -> TInf Type
-typeInferenceExpr ctx e = do
-    (s, t) <- tInfExpr (TypeCtx ctx) e
-    return (apply s t)
+typeInferenceExpr = typeInference tInfExpr
+--typeInferenceExpr ctx e = do
+--    s, t) <- tInfExpr (TypeCtx ctx) e
+--    return t
 
 ------------------------------------------------------------------------------------------------------------------------
 
