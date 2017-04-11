@@ -132,6 +132,7 @@ data TInfCtx = TInfCtx {}
 -- |The type inference state consists of the fresh type name generator state and the current type substitution
 data TInfState = TInfState { tInfSupply :: Int,
                              tInfSubst :: Substitution}
+                 deriving (Show)
 
 -- type TInf a = ExceptT String (ReaderT TInfCtx (StateT TInfState IO)) a
 type TInf a = ExceptT String (ReaderT TInfCtx (State TInfState)) a
