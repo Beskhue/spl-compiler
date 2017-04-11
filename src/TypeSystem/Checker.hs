@@ -207,11 +207,11 @@ mgu (TList t) (TList t') = mgu t t'
 mgu (TTuple t1 t2) (TTuple t1' t2') = do
     s1 <- mgu t1 t1'
     s2 <- mgu (apply s1 t2) (apply s1 t2')
-    return $ composeSubstitution s1 s2
+    return $ s1 `composeSubstitution` s2
 mgu (TFunction arg body) (TFunction arg' body') = do
     s1 <- mgu arg arg'
     s2 <- mgu (apply s1 body) (apply s1 body')
-    return $ composeSubstitution s1 s2
+    return $ s1 `composeSubstitution` s2
 mgu t1 t2                = throwError $ "types do not unify: " ++ show t1 ++ " and " ++ show t2
 
 ------------------------------------------------------------------------------------------------------------------------
