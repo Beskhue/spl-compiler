@@ -209,4 +209,13 @@ tInfExpr (TypeCtx ctx) (AST.ExprIdentifier id, _) =
                 t <- instantiate s
                 return (nullSubstitution, t)
 tInfExpr ctx (AST.ExprConstant const, _) = tInfConst ctx const
+tInfExpr ctx (AST.ExprBinaryOp op e1 e2, _) = tInfBinaryOp ctx op e1 e2
 
+tInfBinaryOp :: TypeCtx -> AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
+tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
+    (s1, t1) <- tInfExpr ctx e1
+    (s2, t2) <- tInfExpr ctx e2
+    s <- mgu t1 t2
+    case apply s t1 of
+        TInt -> return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s TInt)
+        _ -> throwError "+ expects type to be Int"
