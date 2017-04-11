@@ -39,6 +39,7 @@ typeInferenceExpr ctx e = do
 
 ------------------------------------------------------------------------------------------------------------------------
 
+-- |The possible types
 data Type = TVar String
           | TBool
           | TInt
@@ -47,11 +48,13 @@ data Type = TVar String
           | TTuple Type Type
           | TFunction Type Type
             deriving (Show, Eq, Ord)
+
+-- |A type scheme (polytype): a type with a list of bound type variables (the type variables not bound are still free)
 data Scheme = Scheme [String] Type
 
 ------------------------------------------------------------------------------------------------------------------------
 
--- |Class to perform type inference and the like
+-- |Class to find free type variables and to apply type substitutions
 class Types a where
     freeTypeVars :: a -> Set.Set String
     apply :: Substitution -> a -> a
@@ -74,6 +77,7 @@ instance Types Scheme where
     freeTypeVars (Scheme vars t) = (freeTypeVars t) `Set.difference` (Set.fromList vars)
     apply s (Scheme vars t) = Scheme vars (apply (foldr Map.delete s vars) t)
 
+-- |Might be useful to have the class available on lists as well
 instance Types a => Types [a] where
     freeTypeVars l = foldr Set.union Set.empty (map freeTypeVars l)
     apply s = map (apply s)
@@ -86,6 +90,8 @@ type Substitution = Map.Map String Type
 nullSubstitution :: Substitution
 nullSubstitution = Map.empty
 
+-- |Compose two substitutions: substitute the types in s2 using the s1 substitution, and merge the resulting
+-- substitution back with s1
 composeSubstitution :: Substitution -> Substitution -> Substitution
 composeSubstitution s1 s2 = (Map.map (apply s1) s2) `Map.union` s1
 
@@ -97,6 +103,7 @@ newtype TypeCtx = TypeCtx (Map.Map String Scheme)
 emptyCtx :: TypeCtx
 emptyCtx = TypeCtx (Map.empty)
 
+-- |Remove a term variable from the context
 remove :: TypeCtx -> String -> TypeCtx
 remove (TypeCtx ctx) var = TypeCtx (Map.delete var ctx)
 
@@ -106,7 +113,9 @@ instance Types TypeCtx where
 
 ------------------------------------------------------------------------------------------------------------------------
 
--- |Abstract a type over all type variables free in the type but not free in the context
+-- |Abstract a type over all type variables free in the type but not free in the context, i.e. creates a type scheme
+-- for a type in a given context, by binding all type variables in the type that are not bound in the context to the
+-- type.
 generalize :: TypeCtx -> Type -> Scheme
 generalize ctx t =
     let vars = Set.toList ((freeTypeVars t) `Set.difference` (freeTypeVars ctx)) in
