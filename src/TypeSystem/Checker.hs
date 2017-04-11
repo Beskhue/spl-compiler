@@ -178,11 +178,12 @@ mgu (TFunction arg body) (TFunction arg' body') = do
     s1 <- mgu arg arg'
     s2 <- mgu (apply s1 body) (apply s1 body')
     return $ composeSubstitution s1 s2
-mgu (TVar u) t  = varBind u t
-mgu t (TVar u)  = varBind u t
-mgu TInt TInt   = return nullSubstitution
-mgu TBool TBool = return nullSubstitution
-mgu t1 t2       = throwError $ "types do not unify: " ++ show t1 ++ " and " ++ show t2
+mgu (TVar u) t           = varBind u t
+mgu t (TVar u)           = varBind u t
+mgu TInt TInt            = return nullSubstitution
+mgu TBool TBool          = return nullSubstitution
+mgu (TList t) (TList t') = mgu t t'
+mgu t1 t2                = throwError $ "types do not unify: " ++ show t1 ++ " and " ++ show t2
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -212,6 +213,11 @@ tInfExpr ctx (AST.ExprConstant const, _) = tInfConst ctx const
 tInfExpr ctx (AST.ExprBinaryOp op e1 e2, _) = tInfBinaryOp ctx op e1 e2
 
 tInfBinaryOp :: TypeCtx -> AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
+tInfBinaryOp ctx (AST.BinaryOpConcat, _) e1 e2 = do
+    (s1, t1) <- tInfExpr ctx e1
+    (s2, t2) <- tInfExpr (apply s1 ctx) e2
+    s <- mgu (TList (apply s2 t1)) t2
+    return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s t2)
 tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
     (s1, t1) <- tInfExpr ctx e1
     (s2, t2) <- tInfExpr ctx e2
