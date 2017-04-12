@@ -69,6 +69,7 @@ data Type = TVar String
           | TList Type
           | TTuple Type Type
           | TFunction Type Type
+          | TVoid
             deriving (Show, Eq, Ord)
 
 -- |A type scheme (polytype): a type with a list of bound type variables (the type variables not bound are still free)
@@ -89,6 +90,7 @@ instance Types Type where
     freeTypeVars (TList l) = freeTypeVars l
     freeTypeVars (TTuple t1 t2) = Set.union (freeTypeVars t1) (freeTypeVars t2)
     freeTypeVars (TFunction arg body) = Set.union (freeTypeVars arg) (freeTypeVars body)
+    freeTypeVars TVoid = Set.empty
 
     apply s (TVar v) =
         case Map.lookup v s of
@@ -217,6 +219,7 @@ mgu (TFunction arg body) (TFunction arg' body') = do
     s1 <- mgu arg arg'
     s2 <- mgu (apply s1 body) (apply s1 body')
     return $ s1 `composeSubstitution` s2
+mgu TVoid TVoid          = return nullSubstitution
 mgu t1 t2                = throwError $ "types do not unify: " ++ show t1 ++ " and " ++ show t2
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -272,16 +275,26 @@ translateType p TInt               = (AST.TypeInt, p)
 translateType p TChar              = (AST.TypeChar, p)
 translateType p (TList t)          = (AST.TypeList $ translateType p t, p)
 translateType p (TTuple t1 t2)     = (AST.TypeTuple (translateType p t1) (translateType p t2), p)
--- translateType p TTunction arg body = (AST.Type ...)
 
-translateType' :: AST.Type -> Type
-translateType' (AST.TypeIdentifier id, _) = TVar $ idName id
-translateType' (AST.TypeBool, _)          = TBool
-translateType' (AST.TypeInt, _)           = TInt
-translateType' (AST.TypeChar, _)          = TChar
-translateType' (AST.TypeList t, _)        = TList $ translateType' t
-translateType' (AST.TypeTuple t1 t2, _)   = TTuple (translateType' t1) (translateType' t2)
--- translateType' AST.TypeFunction arg body = TFunction (translateType' arg) (translateType' body)
+translateFunType :: Pos.Pos -> Type -> AST.FunType
+translateFunType = translateFunType' []
+    where
+        translateFunType' :: [AST.Type] -> Pos.Pos -> Type -> AST.FunType
+        translateFunType' acc p (TFunction arg body) =
+            case body of
+                (TFunction arg' body') -> translateFunType' (acc ++ [translateType p arg']) p body'
+                TVoid -> (AST.FunTypeVoid acc, p)
+                _ -> (AST.FunType acc (translateType p body), p)
+
+rTranslateType :: AST.Type -> Type
+rTranslateType (AST.TypeIdentifier id, _) = TVar $ idName id
+rTranslateType (AST.TypeBool, _)          = TBool
+rTranslateType (AST.TypeInt, _)           = TInt
+rTranslateType (AST.TypeChar, _)          = TChar
+rTranslateType (AST.TypeList t, _)        = TList $ rTranslateType t
+rTranslateType (AST.TypeTuple t1 t2, _)   = TTuple (rTranslateType t1) (rTranslateType t2)
+-- rTranslateType AST.TypeFunction arg body = TFunction (rTranslateType arg) (rTranslateType body)
+
 
 ------------------------------------------------------------------------------------------------------------------------
 
