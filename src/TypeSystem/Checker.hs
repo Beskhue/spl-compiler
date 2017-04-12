@@ -234,7 +234,7 @@ mgu (TFunction [] body) (TFunction [] body') = do
 mgu (TFunction (arg:args) body) (TFunction (arg':args') body') = do
     s1 <- mgu arg arg'
     s2 <- mgu (apply s1 (TFunction args body)) (apply s1 (TFunction args' body'))
-    return $ s1 `composeSubstitution` s2
+    return $ s2 `composeSubstitution` s1
 mgu TVoid TVoid          = return nullSubstitution
 mgu t1 t2                = throwError $ "types do not unify: " ++ show t1 ++ " and " ++ show t2
 
