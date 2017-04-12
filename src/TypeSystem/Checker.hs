@@ -84,6 +84,7 @@ data Type = TVar String
 
 -- |A type scheme (polytype): a type with a list of bound type variables (the type variables not bound are still free)
 data Scheme = Scheme [String] Type
+              deriving (Show)
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -137,6 +138,7 @@ composeSubstitution s1 s2 = (Map.map (apply s1) s2) `Map.union` s1
 
 -- |A type context (or environment) is a mapping from term variables to type schemes
 newtype TypeCtx = TypeCtx (Map.Map String Scheme)
+                  deriving (Show)
 
 emptyMap :: Map.Map String Scheme
 emptyMap = Map.empty
@@ -282,8 +284,20 @@ tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
 ------------------------------------------------------------------------------------------------------------------------
 
 tInfSPL :: TypeCtx -> AST.SPL -> TInf (AST.SPL, Substitution, Type)
-tInfSPL _ [] = return ([], nullSubstitution, TVoid)
-tInfSPL ctx (decl:decls) = undefined
+tInfSPL ctx decls = do
+    ctx' <- addGlobalsToCtx ctx decls
+    throwError $ show ctx'
+    where
+        addGlobalsToCtx :: TypeCtx -> AST.SPL -> TInf TypeCtx
+        addGlobalsToCtx ctx [] = return ctx
+        addGlobalsToCtx ctx (decl:decls) = do
+            typeVar <- newTypeVar "a" -- Create a (temporary) new type var for this global
+            ctx' <- addGlobalsToCtx ctx decls
+            case decl of
+                (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> return $ add ctx' (idName i) (generalize ctx typeVar)
+                (AST.DeclV (AST.VarDeclUntyped i _, _), _) -> return $ add ctx' (idName i) (generalize ctx typeVar)
+                (AST.DeclF (AST.FunDeclTyped i _ _ _, _), _) -> return $ add ctx' (idName i) (generalize ctx typeVar)
+                (AST.DeclF (AST.FunDeclUntyped i _ _, _), _) -> return $ add ctx' (idName i) (generalize ctx typeVar)
 
 tInfDecl :: TypeCtx -> AST.Decl -> TInf (AST.Decl, Substitution, String, Type)
 tInfDecl ctx (AST.DeclV decl, p) = do
