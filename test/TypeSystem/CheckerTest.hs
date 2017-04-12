@@ -38,6 +38,26 @@ spec_Checker = do
             onlyTypeEmptyTInfExpr (expr  "'a' + 'b';") `shouldSatisfy` isLeft
     describe "Checker.check" $
         it "Programs survive a parse -> type check -> pretty print -> parse -> type check round trip" $ do
+            rawSPL <- Lib.readUTF8File "example-programs/fac.spl"
+            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
+            --rawSPL <- Lib.readUTF8File "example-programs/tuple_increment.spl"
+            --parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
+            rawSPL <- Lib.readUTF8File "example-programs/precedence_assoc.spl"
+            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
+            rawSPL <- Lib.readUTF8File "example-programs/last.spl"
+            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
+            rawSPL <- Lib.readUTF8File "example-programs/length.spl"
+            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
+            rawSPL <- Lib.readUTF8File "example-programs/concat.spl"
+            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
+            rawSPL <- Lib.readUTF8File "example-programs/fib.spl"
+            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
+            rawSPL <- Lib.readUTF8File "example-programs/precedence_parentheses.spl"
+            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
+            rawSPL <- Lib.readUTF8File "example-programs/ugly_style.spl"
+            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
+            rawSPL <- Lib.readUTF8File "example-programs/scopes.spl"
+            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
             rawSPL <- Lib.readUTF8File "example-programs/tct.spl"
             parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
             rawSPL <- Lib.readUTF8File "example-programs/tcthard.spl"
