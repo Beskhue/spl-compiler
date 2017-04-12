@@ -424,18 +424,17 @@ tInfStatements ctx (statement:statements) = do
 
     (statements', s2, t2) <- tInfStatements ctx' statements
 
-    let s = s2 `composeSubstitution` s1
-
-    case returnsValue of
-        True -> (
+    if returnsValue
+        then
             case t2 of
-                TVoid -> return (apply s $ statement' : statements', s, apply s t1)
+                TVoid -> return (statement' : statements', s2 `composeSubstitution` s1, apply s2 t1)
                 _ -> do
-                    s <- mgu (apply s2 t1) t2 -- todo: both the composed adn the mgu substitution are called 's', probably will be buggy
-                    return (apply s $ statement' : statements', s, apply s t1)
-            )
-
-        False -> return (apply s $ statement' : statements', s, apply s t2)
+                    s <- mgu (apply s2 t1) t2
+                    return (
+                        apply (s `composeSubstitution` s2) statement' : statements',
+                        s `composeSubstitution` s2 `composeSubstitution` s1,
+                        apply s t2)
+        else return (statement' : statements', s2 `composeSubstitution` s1, t2)
 
 tInfStatement :: TypeCtx -> AST.Statement -> TInf (AST.Statement, Substitution, String, Type, Bool)
 tInfStatement ctx (AST.StmtVarDecl decl, p) = do
