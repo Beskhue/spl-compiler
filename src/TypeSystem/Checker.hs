@@ -33,12 +33,6 @@ import qualified Data.AST as AST
 
 ------------------------------------------------------------------------------------------------------------------------
 
--- |Todo: implement main SPL checker
---check :: AST.SPL -> Either String AST.SPL
---check spl = res
---    where
---        (res, _) = runTCheck $ tCheckSPL spl
-
 check :: AST.SPL -> Either String AST.SPL
 check spl =
     case res of
@@ -72,9 +66,6 @@ typeInference tInf' ctx e = res
 
 typeInferenceExpr :: ScopedTypeCtx -> AST.Expression -> Either String (Substitution, Type)
 typeInferenceExpr = typeInference tInfExpr
---typeInferenceExpr ctx e = do
---    s, t) <- tInfExpr (TypeCtx ctx) e
---    return t
 
 ------------------------------------------------------------------------------------------------------------------------
 
