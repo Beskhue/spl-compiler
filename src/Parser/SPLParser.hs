@@ -92,16 +92,14 @@ pFunDecl = (do
                 tok (TPunctuator PFunType)
                 funType <- pFunType
                 tok (TPunctuator PBraceOpen)
-                varDecls <- many (try pVarDecl) -- try can be removed, if identifiers cannot be used as types
                 statements <- many1 pStatement
                 tok (TPunctuator PBraceClose) <?> "a closing brace"
-                return (AST.FunDeclTyped (identifier, p) args funType varDecls statements, p)
+                return (AST.FunDeclTyped (identifier, p) args funType statements, p)
             _ -> do
                 tok (TPunctuator PBraceOpen)
-                varDecls <- many (try pVarDecl)
                 statements <- many1 pStatement
                 tok (TPunctuator PBraceClose) <?> "a closing brace"
-                return (AST.FunDeclUntyped (identifier, p) args varDecls statements, p)
+                return (AST.FunDeclUntyped (identifier, p) args statements, p)
     ) <?> "a function declaration"
 
 pFunArgsDef :: Parser [AST.Identifier]
@@ -176,7 +174,10 @@ pTypeIdentifier = (do
     return (AST.TypeIdentifier (identifier, p), p)) <?> "a type identifier"
 
 pStatement :: Parser AST.Statement
-pStatement = pStatementConditional <|> pStatementWhile <|> pStatementFunCallAssignment <|> pStatementReturn <|> pStatementBlock
+pStatement = (do
+        (varDecl, p) <- try pVarDecl
+        return $ (AST.StmtVarDecl (varDecl, p), p)
+    ) <|> pStatementConditional <|> pStatementWhile <|> pStatementFunCallAssignment <|> pStatementReturn <|> pStatementBlock
 
 pStatementConditional :: Parser AST.Statement
 pStatementConditional =

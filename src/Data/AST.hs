@@ -60,24 +60,22 @@ instance (ASTEq VarDecl) where
     astEq (VarDeclUntyped i1 e1, _) (VarDeclUntyped i2 e2, _) = astEq i1 i2 && astEq e1 e2
     astEq _ _ = False
 
-data FunDecl'        = FunDeclTyped Identifier [Identifier] FunType [VarDecl] [Statement] -- [Identifier] are the arguments
-                     | FunDeclUntyped Identifier [Identifier] [VarDecl] [Statement]
+data FunDecl'        = FunDeclTyped Identifier [Identifier] FunType [Statement] -- [Identifier] are the arguments
+                     | FunDeclUntyped Identifier [Identifier] [Statement]
                        deriving (Eq, Show)
 type FunDecl         = (FunDecl', Pos)
 
 instance PrettyPrint FunDecl where
     prettyPrint (f, _) = case f of
-        FunDeclTyped name args fType v s ->
+        FunDeclTyped name args fType ss ->
             prettyPrint name
             ++ " (" ++ printArgs 0 args ++ ") :: " ++ prettyPrint fType ++ "\n{\n"
-            ++ indent (prettyPrint v) ++ (if length v > 0 then "\n\n" else "")
-            ++ indent (prettyPrint s) ++ "\n"
+            ++ indent (prettyPrint ss) ++ "\n"
             ++ "}"
-        FunDeclUntyped name args v s ->
+        FunDeclUntyped name args ss ->
             prettyPrint name
             ++ " (" ++ printArgs 0 args ++ ")\n{\n"
-            ++ indent (prettyPrint v) ++ (if length v > 0 then "\n\n" else "")
-            ++ indent (prettyPrint s) ++ "\n"
+            ++ indent (prettyPrint ss) ++ "\n"
             ++ "}"
         where
             printArgs :: Int -> [Identifier] -> String
@@ -86,8 +84,8 @@ instance PrettyPrint FunDecl where
             printArgs n (arg:args) = ", " ++ prettyPrint arg ++ printArgs 2 args
 
 instance (ASTEq FunDecl) where
-    astEq (FunDeclTyped i1 is1 t1 vs1 ss1, _) (FunDeclTyped i2 is2 t2 vs2 ss2, _) = astEq i1 i2 && astEq is1 is2 && astEq t1 t2 && astEq vs1 vs2 && astEq ss1 ss2
-    astEq (FunDeclUntyped i1 is1 vs1 ss1, _) (FunDeclUntyped i2 is2 vs2 ss2, _) = astEq i1 i2 && astEq is1 is2 && astEq vs1 vs2 && astEq ss1 ss2
+    astEq (FunDeclTyped i1 is1 t1 ss1, _) (FunDeclTyped i2 is2 t2 ss2, _) = astEq i1 i2 && astEq is1 is2 && astEq t1 t2 && astEq ss1 ss2
+    astEq (FunDeclUntyped i1 is1 ss1, _) (FunDeclUntyped i2 is2 ss2, _) = astEq i1 i2 && astEq is1 is2 && astEq ss1 ss2
     astEq _ _ = False
 
 data FunType'        = FunType [Type] Type
@@ -135,7 +133,8 @@ instance (ASTEq Type) where
     astEq (TypeIdentifier i1, _) (TypeIdentifier i2, _) = astEq i1 i2
     astEq _ _ = False
 
-data Statement'      = StmtIf Expression Statement
+data Statement'      = StmtVarDecl VarDecl
+                     | StmtIf Expression Statement
                      | StmtIfElse Expression Statement Statement
                      | StmtWhile Expression Statement
                      | StmtBlock [Statement]
@@ -152,6 +151,7 @@ indentIfNotBlock (StmtBlock s, p) = prettyPrint (StmtBlock s, p)
 indentIfNotBlock s = indent $ prettyPrint s
 
 instance PrettyPrint Statement where
+    prettyPrint (StmtVarDecl v, _) = prettyPrint v
     prettyPrint (StmtIf e s, _) = "if ("
         ++ prettyPrint e
         ++ ")\n"
@@ -181,6 +181,7 @@ instance PrettyPrint Statement where
     prettyPrint (StmtReturnVoid, _) = "return;"
 
 instance (ASTEq Statement) where
+    astEq (StmtVarDecl v1, _) (StmtVarDecl v2, _) = astEq v1 v2
     astEq (StmtIf e1 s1, _) (StmtIf e2 s2, _) = astEq e1 e2 && astEq s1 s2
     astEq (StmtIfElse e1 s1 s1', _) (StmtIfElse e2 s2 s2', _) = astEq e1 e2 && astEq s1 s2 && astEq s1' s2'
     astEq (StmtWhile e1 s1, _) (StmtWhile e2 s2, _) = astEq e1 e2 && astEq s1 s2
