@@ -188,7 +188,7 @@ instance Types TypeCtx where
 instance Types a => Types (Stack.Stack a) where
     freeTypeVars stack =
         case Stack.stackPop stack of
-            Just (stack', a) -> freeTypeVars a
+            Just (stack', a) -> freeTypeVars a `Set.union` freeTypeVars stack'
             _ -> Set.empty
     apply s stack =
         case Stack.stackPop stack of
