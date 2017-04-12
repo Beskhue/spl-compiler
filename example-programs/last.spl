@@ -1,3 +1,7 @@
+length (l) :: [a] -> Int {
+    return -1;
+}
+
 last (list) :: [Int] -> Int {
     if (length(list) == 0) {
         return -1;
