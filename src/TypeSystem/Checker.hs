@@ -310,11 +310,12 @@ tInfBinaryOp ctx (AST.BinaryOpConcat, _) e1 e2 = do
     return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s t2)
 tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
     (s1, t1) <- tInfExpr ctx e1
-    (s2, t2) <- tInfExpr ctx e2
-    s <- mgu t1 t2
-    case apply s t1 of
-        TInt -> return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s TInt)
-        _ -> throwError "+ expects type to be Int"
+    s1' <- mgu t1 TInt
+
+    (s2, t2) <- tInfExpr (apply (s1' `composeSubstitution` s1) ctx) e2
+    s2' <- mgu (apply (s2 `composeSubstitution` s1') t1) t2
+
+    return (s2' `composeSubstitution` s2 `composeSubstitution` s1' `composeSubstitution` s1, TInt)
 
 ------------------------------------------------------------------------------------------------------------------------
 
