@@ -486,6 +486,7 @@ tInfStatement ctx (AST.StmtBlock stmts, p) = do
 tInfStatement ctx (AST.StmtReturn expr, p) = do
     (s, t) <- tInfExpr ctx expr
     return ((AST.StmtReturn expr, p), s, "", t, True)
+tInfStatement ctx (AST.StmtReturnVoid, p) = return ((AST.StmtReturnVoid, p), nullSubstitution, "", TVoid, True)
 tInfStatement ctx (AST.StmtAssignment identifier expr, p) = do
     (Scheme _ t) <- getScheme ctx (idName identifier)
     (s1, t1) <- tInfExpr ctx expr
