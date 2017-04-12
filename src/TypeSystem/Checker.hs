@@ -31,10 +31,18 @@ import qualified Data.AST as AST
 ------------------------------------------------------------------------------------------------------------------------
 
 -- |Todo: implement main SPL checker
+--check :: AST.SPL -> Either String AST.SPL
+--check spl = res
+--    where
+--        (res, _) = runTCheck $ tCheckSPL spl
+
 check :: AST.SPL -> Either String AST.SPL
-check spl = res
+check spl =
+    case res of
+        Left err -> Left err
+        Right (spl, _, _) -> Right spl
     where
-        (res, _) = runTCheck $ tCheckSPL spl
+        (res, _) = runTInf $ tInfSPL emptyCtx spl
 
 typeInferenceDet :: (TypeCtx -> a -> TInf (Substitution, Type)) -> Map.Map String Scheme -> a -> (Substitution, Type)
 typeInferenceDet tInf' ctx e =
@@ -271,6 +279,47 @@ tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
 
 ------------------------------------------------------------------------------------------------------------------------
 
+tInfSPL :: TypeCtx -> AST.SPL -> TInf (AST.SPL, Substitution, Type)
+tInfSPL _ [] = return ([], nullSubstitution, TVoid)
+tInfSPL ctx (decl:decls) = undefined
+
+tInfDecl :: TypeCtx -> AST.Decl -> TInf (AST.Decl, Substitution, String, Type)
+tInfDecl ctx (AST.DeclV decl, p) = do
+    (decl', s, varName, t) <- tInfVarDecl ctx decl
+    return ((AST.DeclV decl', p), s, varName, t)
+tInfDecl ctx (AST.DeclF decl, p) = do
+    (decl', s, varName, t) <- tInfFunDecl ctx decl
+    return ((AST.DeclF decl', p), s, varName, t)
+
+tInfVarDecl :: TypeCtx -> AST.VarDecl -> TInf (AST.VarDecl, Substitution, String, Type)
+tInfVarDecl ctx decl =
+    case decl of
+        (AST.VarDeclTyped _ identifier expr, p) -> tInfVarDecl' p ctx identifier expr -- todo: check annotation
+        (AST.VarDeclUntyped identifier expr, p) -> tInfVarDecl' p ctx identifier expr
+    where
+        tInfVarDecl' :: Pos.Pos -> TypeCtx -> AST.Identifier -> AST.Expression -> TInf (AST.VarDecl, Substitution, String, Type)
+        tInfVarDecl' p ctx identifier expr = do
+            (s, t) <- tInfExpr ctx expr
+            let t' = translateType p t
+            return ((AST.VarDeclTyped t' identifier expr, p), s, idName identifier, t)
+
+tInfFunDecl :: TypeCtx -> AST.FunDecl -> TInf (AST.FunDecl, Substitution, String, Type)
+tInfFunDecl = undefined
+
+tInfStatements :: TypeCtx -> [AST.Statement] -> TInf ([AST.Statement], Substitution, Type)
+tInfStatements _ [] = return ([], nullSubstitution, TVoid)
+tInfStatements ctx (statement:statements) = do
+    (statement', s1, varName, t1) <- tInfStatement ctx statement
+    let ctx' = add ctx varName (generalize ctx t1)
+    (statements', s2, t2) <- tInfStatements ctx' statements
+    -- s <- mgu (apply s2 t1) t2
+    return (statement' : statements', s2, t2)
+
+tInfStatement :: TypeCtx -> AST.Statement -> TInf (AST.Statement, Substitution, String, Type)
+tInfStatement = undefined
+
+------------------------------------------------------------------------------------------------------------------------
+
 translateType :: Pos.Pos -> Type -> AST.Type
 translateType p (TVar str)         = (AST.TypeIdentifier (AST.Identifier str, p), p)
 translateType p TBool              = (AST.TypeBool, p)
@@ -296,6 +345,9 @@ rTranslateFunType (AST.FunTypeVoid args, _)  = TFunction (map rTranslateType arg
 rTranslateFunType (AST.FunType args body, _) = TFunction (map rTranslateType args) (rTranslateType body)
 
 ------------------------------------------------------------------------------------------------------------------------
+
+
+{-
 
 type Rewrite = Bool
 type TCheck a = ExceptT String (State (TypeCtx, Rewrite)) a
@@ -353,9 +405,12 @@ tCheckVarDecl v =
     case v of
         (AST.VarDeclTyped annotatedType identifier expr, p) -> do
             (ast, t) <- tCheckVarDecl' p identifier expr
-            if rTranslateType annotatedType == t
-                then return ast
-                else throwError $ "Expected type: " ++ show (rTranslateType annotatedType) ++ ". Actual type: " ++ show t
+
+            let t' = rTranslateType annotatedType in do
+                let s = runTInf $ mgu t t' in
+                    if (apply s t) == (apply s t')
+                        then return ast
+                        else throwError $ "Expected type: " ++ show t' ++ ". Actual type: " ++ show t
         (AST.VarDeclUntyped identifier expr, p) -> do
             (ast, _) <- tCheckVarDecl' p identifier expr
             return ast
@@ -376,3 +431,5 @@ tCheckFunDecl :: AST.FunDecl -> TCheck AST.FunDecl
 tCheckFunDecl = undefined
 
 ------------------------------------------------------------------------------------------------------------------------
+
+-}
