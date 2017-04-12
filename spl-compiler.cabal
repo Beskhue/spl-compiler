@@ -20,6 +20,7 @@ library
                      , Data.Token
                      , Data.AST
                      , Data.NFA
+                     , Data.Stack
                      , Text.Regex.Thompson
                      , Lexer.Lexer
                      , Parser.SPLParser
