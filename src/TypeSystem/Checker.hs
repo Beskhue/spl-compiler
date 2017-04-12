@@ -445,6 +445,9 @@ tInfStatement ctx (AST.StmtIf expr st, p) = do
     s <- mgu t1 TBool
     (st', s2, varName, t2, returnsValue) <- tInfStatement (apply s ctx) st
     return ((AST.StmtIf expr st', p), s2 `composeSubstitution` s `composeSubstitution` s1, varName, t2, returnsValue)
+tInfStatement ctx (AST.StmtBlock stmts, p) = do
+    (stmts, s, t) <- tInfStatements ctx stmts
+    return ((AST.StmtBlock stmts, p), s, "", t, False)
 tInfStatement ctx (AST.StmtReturn expr, p) = do
     (s, t) <- tInfExpr ctx expr
     return ((AST.StmtReturn expr, p), s, "", t, True)
