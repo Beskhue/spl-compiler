@@ -220,6 +220,15 @@ mgu t1 t2                = throwError $ "types do not unify: " ++ show t1 ++ " a
 idName :: AST.Identifier -> String
 idName (AST.Identifier i, _) = i
 
+-- |Perform type inference on an AST identifier
+tInfId :: TypeCtx -> AST.Identifier -> TInf (Substitution, Type)
+tInfId (TypeCtx ctx) (AST.Identifier i, _) =
+    case Map.lookup i ctx of
+        Nothing -> throwError $ "unbound variable: " ++ i
+        Just scheme -> do
+            t <- instantiate scheme
+            return (nullSubstitution, t)
+
 -- |Perform type inference on an AST constant
 tInfConst :: TypeCtx -> AST.Constant -> TInf (Substitution, Type)
 tInfConst _ (AST.ConstBool _, _) = return (nullSubstitution, TBool)
@@ -231,13 +240,7 @@ tInfConst _ (AST.ConstEmptyList, _) = do
 
 -- |Perform type inference on an AST expression
 tInfExpr :: TypeCtx -> AST.Expression -> TInf (Substitution, Type)
-tInfExpr (TypeCtx ctx) (AST.ExprIdentifier id, _) =
-    let i = idName id in
-        case Map.lookup i ctx of
-            Nothing -> throwError $ "unbound variable: " ++ i
-            Just s -> do
-                t <- instantiate s
-                return (nullSubstitution, t)
+tInfExpr ctx (AST.ExprIdentifier id, _) = tInfId ctx id
 tInfExpr ctx (AST.ExprConstant const, _) = tInfConst ctx const
 tInfExpr ctx (AST.ExprBinaryOp op e1 e2, _) = tInfBinaryOp ctx op e1 e2
 
@@ -254,3 +257,6 @@ tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
     case apply s t1 of
         TInt -> return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s TInt)
         _ -> throwError "+ expects type to be Int"
+
+
+------------------------------------------------------------------------------------------------------------------------
