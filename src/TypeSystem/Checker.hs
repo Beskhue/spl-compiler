@@ -491,6 +491,7 @@ tInfStatement ctx (AST.StmtAssignment identifier expr, p) = do
 
     let t' = translateType p (apply s t1)
     return ((AST.StmtAssignment identifier expr, p), s `composeSubstitution` s1, "", apply s t1, False)
+tInfStatement ctx (AST.StmtAssignmentField identifier fields expr, p) = throwError $ "Assigning to fields is not supported"
 tInfStatement ctx (AST.StmtReturn expr, p) = do
     (s, t) <- tInfExpr ctx expr
     return ((AST.StmtReturn expr, p), s, "", t, True)
