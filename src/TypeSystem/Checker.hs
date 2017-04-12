@@ -443,8 +443,38 @@ tInfStatement ctx (AST.StmtVarDecl decl, p) = do
 tInfStatement ctx (AST.StmtIf expr st, p) = do
     (s1, t1) <- tInfExpr ctx expr
     s <- mgu t1 TBool
-    (st', s2, varName, t2, returnsValue) <- tInfStatement (apply s ctx) st
+    (st', s2, varName, t2, returnsValue) <- tInfStatement (apply (s `composeSubstitution` s1) ctx) st
     return ((AST.StmtIf expr st', p), s2 `composeSubstitution` s `composeSubstitution` s1, varName, t2, returnsValue)
+tInfStatement ctx (AST.StmtIfElse expr st1 st2, p) = do
+    (es, et1) <- tInfExpr ctx expr
+    s <- mgu et1 TBool
+    (st1', s1', varName, st1, returnsValue1) <- tInfStatement (apply (s `composeSubstitution` es) ctx) st1
+    (st2', s2', varName, st2, returnsValue2) <- tInfStatement (apply (s1' `composeSubstitution` s `composeSubstitution` es) ctx) st2
+
+    if returnsValue1
+        then if returnsValue2
+            then do
+                s' <- mgu st1 st2
+                return (
+                    (AST.StmtIfElse expr (apply (s' `composeSubstitution` s2') st1') (apply s' st2'), p),
+                    s' `composeSubstitution` s2' `composeSubstitution` s1' `composeSubstitution` s `composeSubstitution` es,
+                    "",
+                    apply s' st2,
+                    True)
+            else return (
+                (AST.StmtIfElse expr (apply s2' st1') st2', p),
+                s2' `composeSubstitution` s1' `composeSubstitution` s `composeSubstitution` es,
+                "",
+                apply s2' st1,
+                True)
+        else return (
+            (AST.StmtIfElse expr (apply s2' st1') st2', p),
+            s2' `composeSubstitution` s1' `composeSubstitution` s `composeSubstitution` es,
+            "",
+            apply s2' st1,
+            False)
+
+
 tInfStatement ctx (AST.StmtBlock stmts, p) = do
     (stmts, s, t) <- tInfStatements ctx stmts
     return ((AST.StmtBlock stmts, p), s, "", t, False)
