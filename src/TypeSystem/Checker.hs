@@ -473,11 +473,11 @@ tInfStatement ctx (AST.StmtIfElse expr st1 st2, p) = do
             "",
             apply s2' st1,
             False)
-
-
 tInfStatement ctx (AST.StmtBlock stmts, p) = do
     (stmts, s, t) <- tInfStatements ctx stmts
-    return ((AST.StmtBlock stmts, p), s, "", t, False)
+    case t of
+        TVoid -> return ((AST.StmtBlock stmts, p), s, "", t, False)
+        _ -> return ((AST.StmtBlock stmts, p), s, "", t, True)
 tInfStatement ctx (AST.StmtReturn expr, p) = do
     (s, t) <- tInfExpr ctx expr
     return ((AST.StmtReturn expr, p), s, "", t, True)
