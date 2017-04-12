@@ -1,0 +1,11 @@
+is_positive (n) :: Int -> Bool {
+    var b = False;
+    
+    {
+        var a = n + 0;
+        b = a >= 0;
+    }
+    
+    Bool a = b;
+    return a;
+}
