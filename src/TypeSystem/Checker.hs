@@ -312,7 +312,7 @@ tInfSPL ctx decls = do
         addGlobalsToCtx :: TypeCtx -> AST.SPL -> TInf TypeCtx
         addGlobalsToCtx ctx [] = return ctx
         addGlobalsToCtx ctx (decl:decls) = do
-            typeVar <- newTypeVar "a" -- Create a (temporary) new type var for this global
+            typeVar <- newTypeVar "global" -- Create a (temporary) new type var for this global
             ctx' <- addGlobalsToCtx ctx decls
             case decl of
                 (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
@@ -341,7 +341,7 @@ tInfDecl ctx (AST.DeclF decl, p) = do
 tInfVarDecl :: TypeCtx -> AST.VarDecl -> TInf (AST.VarDecl, Substitution, String, Type)
 tInfVarDecl ctx decl =
     case decl of
-        (AST.VarDeclTyped _ identifier expr, p) -> tInfVarDecl' p ctx identifier expr -- todo: check annotation
+        (AST.VarDeclTyped _ identifier expr, p) -> tInfVarDecl' p ctx identifier expr -- todo: check annotation (probably by checking whether mgu on translated type and inferred type succeeds)
         (AST.VarDeclUntyped identifier expr, p) -> tInfVarDecl' p ctx identifier expr
     where
         tInfVarDecl' :: Pos.Pos -> TypeCtx -> AST.Identifier -> AST.Expression -> TInf (AST.VarDecl, Substitution, String, Type)
@@ -351,7 +351,23 @@ tInfVarDecl ctx decl =
             return ((AST.VarDeclTyped t' identifier expr, p), s, idName identifier, t)
 
 tInfFunDecl :: TypeCtx -> AST.FunDecl -> TInf (AST.FunDecl, Substitution, String, Type)
-tInfFunDecl = undefined
+tInfFunDecl ctx decl =
+    case decl of
+        (AST.FunDeclTyped identifier args _ stmts, p) -> tInfFunDecl' p ctx identifier args stmts -- todo: check annotation
+        (AST.FunDeclUntyped identifier args stmts, p) -> tInfFunDecl' p ctx identifier args stmts
+    where
+        tInfFunDecl' :: Pos.Pos -> TypeCtx -> AST.Identifier -> [AST.Identifier] -> [AST.Statement] -> TInf (AST.FunDecl, Substitution, String, Type)
+        tInfFunDecl' p ctx identifier args stmts = do
+            scopedCtx <- addArgsToCtx (idName identifier ++ "_") ctx args -- Create the function's scoped context
+            throwError $ show scopedCtx
+            where
+                addArgsToCtx :: String -> TypeCtx -> [AST.Identifier] -> TInf TypeCtx
+                addArgsToCtx prefix ctx [] = return ctx
+                addArgsToCtx prefix ctx (arg:args) = do
+                    typeVar <- newTypeVar (prefix ++ "arg")
+                    ctx' <- addArgsToCtx prefix ctx args
+                    return $ add ctx' (idName arg) (Scheme [] typeVar)
+
 
 tInfStatements :: TypeCtx -> [AST.Statement] -> TInf ([AST.Statement], Substitution, Type)
 tInfStatements _ [] = return ([], nullSubstitution, TVoid)
