@@ -176,19 +176,19 @@ pTypeIdentifier = (do
     return (AST.TypeIdentifier (identifier, p), p)) <?> "a type identifier"
 
 pStatement :: Parser AST.Statement
-pStatement = pStatementConditional <|> pStatementWhile <|> pStatementFunCallAssignment <|> pStatementReturn
+pStatement = pStatementConditional <|> pStatementWhile <|> pStatementFunCallAssignment <|> pStatementReturn <|> pStatementBlock
 
 pStatementConditional :: Parser AST.Statement
 pStatementConditional =
     (do
         TP _ p <- tok (TKeyword KIf)
         condition <- pCondition
-        statements <- pStatementBlock
+        statements <- pStatement
         t <- pPeek
         case t of
             TKeyword KElse -> do
                 tok (TKeyword KElse)
-                statements' <- pStatementBlock
+                statements' <- pStatement
                 return (AST.StmtIfElse condition statements statements', p)
             _ -> return (AST.StmtIf condition statements, p)
     ) <?> "an if or if-else statement"
@@ -198,7 +198,7 @@ pStatementWhile =
     (do
         TP _ p <- tok (TKeyword KWhile)
         condition <- pCondition
-        statements <- pStatementBlock
+        statements <- pStatement
         return (AST.StmtWhile condition statements, p)
     ) <?> "a while statement"
 
@@ -211,13 +211,13 @@ pCondition =
         return condition
     ) <?> "a parenthesized condition"
 
-pStatementBlock :: Parser [AST.Statement]
+pStatementBlock :: Parser AST.Statement
 pStatementBlock =
     (do
-        tok (TPunctuator PBraceOpen)
+        TP _ p <- tok (TPunctuator PBraceOpen)
         statements <- many pStatement
         tok (TPunctuator PBraceClose)
-        return statements
+        return (AST.StmtBlock statements, p)
     ) <?> "a statement block"
 
 pStatementFunCallAssignment :: Parser AST.Statement

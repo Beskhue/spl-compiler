@@ -135,9 +135,10 @@ instance (ASTEq Type) where
     astEq (TypeIdentifier i1, _) (TypeIdentifier i2, _) = astEq i1 i2
     astEq _ _ = False
 
-data Statement'      = StmtIf Expression [Statement]
-                     | StmtIfElse Expression [Statement] [Statement]
-                     | StmtWhile Expression [Statement]
+data Statement'      = StmtIf Expression Statement
+                     | StmtIfElse Expression Statement Statement
+                     | StmtWhile Expression Statement
+                     | StmtBlock [Statement]
                      | StmtAssignment Identifier Expression
                      | StmtAssignmentField Identifier [Field] Expression
                      | StmtFunCall Identifier [Expression]
@@ -146,22 +147,26 @@ data Statement'      = StmtIf Expression [Statement]
                        deriving (Eq, Show)
 type Statement       = (Statement', Pos)
 
+indentIfNotBlock :: Statement -> String
+indentIfNotBlock (StmtBlock s, p) = prettyPrint (StmtBlock s, p)
+indentIfNotBlock s = indent $ prettyPrint s
+
 instance PrettyPrint Statement where
-    prettyPrint (StmtIf e ss, _) = "if ("
+    prettyPrint (StmtIf e s, _) = "if ("
         ++ prettyPrint e
-        ++ ") {\n"
-        ++ indent (prettyPrint ss)
-        ++ "\n}"
-    prettyPrint (StmtIfElse e ss1 ss2, _) = "if ("
+        ++ ")\n"
+        ++ indentIfNotBlock s
+    prettyPrint (StmtIfElse e s1 s2, _) = "if ("
         ++ prettyPrint e
-        ++ ") {\n"
-        ++ indent (prettyPrint ss1)
-        ++ "\n} else {\n"
-        ++ indent (prettyPrint ss2)
-        ++ "\n}"
-    prettyPrint (StmtWhile e ss, _) = "while ("
+        ++ ")\n"
+        ++ indentIfNotBlock s1
+        ++ "\nelse\n"
+        ++ indentIfNotBlock s2
+    prettyPrint (StmtWhile e s, _) = "while ("
         ++ prettyPrint e
-        ++ ") {\n"
+        ++ ")"
+        ++ indentIfNotBlock s
+    prettyPrint (StmtBlock ss, _) = "{\n"
         ++ indent (prettyPrint ss)
         ++ "\n}"
     prettyPrint (StmtAssignment i e, _) = prettyPrint i ++ " = " ++ prettyPrint e ++ ";"
@@ -176,9 +181,10 @@ instance PrettyPrint Statement where
     prettyPrint (StmtReturnVoid, _) = "return;"
 
 instance (ASTEq Statement) where
-    astEq (StmtIf e1 ss1, _) (StmtIf e2 ss2, _) = astEq e1 e2 && astEq ss1 ss2
-    astEq (StmtIfElse e1 ss1 ss1', _) (StmtIfElse e2 ss2 ss2', _) = astEq e1 e2 && astEq ss1 ss2 && astEq ss1' ss2'
-    astEq (StmtWhile e1 ss1, _) (StmtWhile e2 ss2, _) = astEq e1 e2 && astEq ss1 ss2
+    astEq (StmtIf e1 s1, _) (StmtIf e2 s2, _) = astEq e1 e2 && astEq s1 s2
+    astEq (StmtIfElse e1 s1 s1', _) (StmtIfElse e2 s2 s2', _) = astEq e1 e2 && astEq s1 s2 && astEq s1' s2'
+    astEq (StmtWhile e1 s1, _) (StmtWhile e2 s2, _) = astEq e1 e2 && astEq s1 s2
+    astEq (StmtBlock ss1, _) (StmtBlock ss2, _) = astEq ss1 ss2
     astEq (StmtAssignment i1 e1, _) (StmtAssignment i2 e2, _) = astEq i1 i2 && astEq e1 e2
     astEq (StmtAssignmentField i1 f1 e1, _) (StmtAssignmentField i2 f2 e2, _) = astEq i1 i2 && astEq f1 f2 && astEq e1 e2
     astEq (StmtFunCall i1 es1, _) (StmtFunCall i2 es2, _) = astEq i1 i2 && astEq es1 es2
