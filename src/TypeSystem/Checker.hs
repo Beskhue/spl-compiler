@@ -327,6 +327,7 @@ tInfExpr ctx (AST.ExprFunCall id args, _) = do
     s <- mgu (apply s2 t1) (TFunction ts tReturn)
     return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s tReturn)
 tInfExpr ctx (AST.ExprConstant const, _) = tInfConst ctx const
+tInfExpr ctx (AST.ExprUnaryOp op e, _) = tInfUnaryOp ctx op e
 tInfExpr ctx (AST.ExprBinaryOp op e1 e2, _) = tInfBinaryOp ctx op e1 e2
 
 -- |Perform type inference on a list of AST expressions
@@ -337,6 +338,16 @@ tInfExprs ctx (expr:exprs) = do
     (s2, ts) <- tInfExprs (apply s1 ctx) exprs
 
     return (s2 `composeSubstitution` s1, (apply s2 t) : ts)
+
+tInfUnaryOp :: TypeCtx -> AST.UnaryOperator -> AST.Expression -> TInf (Substitution, Type)
+tInfUnaryOp ctx (AST.UnaryOpNeg, _) e = do
+    (s1, t1) <- tInfExpr ctx e
+    s <- mgu t1 TBool
+    return (s `composeSubstitution` s1, TBool)
+tInfUnaryOp ctx (AST.UnaryOpSubtr, _) e = do
+    (s1, t1) <- tInfExpr ctx e
+    s <- mgu t1 TInt
+    return (s `composeSubstitution` s1, TInt)
 
 tInfBinaryOp :: TypeCtx -> AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
 tInfBinaryOp ctx (AST.BinaryOpOr, _) e1 e2 = do
