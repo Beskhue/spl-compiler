@@ -517,7 +517,8 @@ tInfFunDecl ctx decl =
     where
         tInfFunDecl' :: Pos.Pos -> ScopedTypeCtx -> AST.Identifier -> [AST.Identifier] -> [AST.Statement] -> TInf (AST.FunDecl, Substitution, String, Type)
         tInfFunDecl' p ctx identifier args stmts = do
-            scopedCtx <- addArgsToCtx (idName identifier ++ "_") ctx args -- Create the function's scoped context
+            let newCtx = Stack.stackPush ctx emptyCtx
+            scopedCtx <- addArgsToCtx (idName identifier ++ "_") newCtx args -- Create the function's scoped context
             (stmts', s, t) <- tInfStatements scopedCtx stmts
 
             argsTypes <- getArgsTypes (apply s scopedCtx) args
@@ -609,7 +610,8 @@ tInfStatement ctx (AST.StmtWhile expr st, p) = do
     (st', s2, varName, t2, returnsValue) <- tInfStatement (apply (s `composeSubstitution` s1) ctx) st
     return ((AST.StmtWhile expr st', p), s2 `composeSubstitution` s `composeSubstitution` s1, varName, t2, returnsValue)
 tInfStatement ctx (AST.StmtBlock stmts, p) = do
-    (stmts, s, t) <- tInfStatements ctx stmts
+    let newCtx = Stack.stackPush ctx emptyCtx
+    (stmts, s, t) <- tInfStatements newCtx stmts
     case t of
         TVoid -> return ((AST.StmtBlock stmts, p), s, "", t, False)
         _ -> return ((AST.StmtBlock stmts, p), s, "", t, True)
