@@ -344,6 +344,14 @@ tInfBinaryOp ctx (AST.BinaryOpEq, _) e1 e2 = do
     (s2, t2) <- tInfExpr (apply s1 ctx) e2
     s <- mgu (apply s2 t1) t2
     return (s `composeSubstitution` s2 `composeSubstitution` s1, TBool)
+tInfBinaryOp ctx (AST.BinaryOpLT, _) e1 e2 = do
+    (s1, t1) <- tInfExpr ctx e1
+    s1' <- mgu t1 TInt
+
+    (s2, t2) <- tInfExpr (apply (s1' `composeSubstitution` s1) ctx) e2
+    s2' <- mgu (apply (s2 `composeSubstitution` s1') t1) t2
+
+    return (s2' `composeSubstitution` s2 `composeSubstitution` s1' `composeSubstitution` s1, TBool)
 tInfBinaryOp ctx (AST.BinaryOpConcat, _) e1 e2 = do
     (s1, t1) <- tInfExpr ctx e1
     (s2, t2) <- tInfExpr (apply s1 ctx) e2
@@ -357,6 +365,8 @@ tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
     s2' <- mgu (apply (s2 `composeSubstitution` s1') t1) t2
 
     return (s2' `composeSubstitution` s2 `composeSubstitution` s1' `composeSubstitution` s1, TInt)
+tInfBinaryOp ctx (AST.BinaryOpSubtr, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpPlus, p) e1 e2
+tInfBinaryOp ctx (AST.BinaryOpMult, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpPlus, p) e1 e2
 
 ------------------------------------------------------------------------------------------------------------------------
 
