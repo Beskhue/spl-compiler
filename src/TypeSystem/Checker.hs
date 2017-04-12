@@ -22,6 +22,7 @@ import qualified Debug.Trace as Trace
 
 import qualified Data.Map as Map
 import qualified Data.Set as Set
+import qualified Data.Stack as Stack
 
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -44,7 +45,7 @@ check spl =
         Left err -> Left err
         Right (spl, _, _) -> Right spl
     where
-        (res, _) = runTInf $ tInfSPL emptyCtx spl
+        (res, _) = runTInf $ tInfSPL emptyScopedCtx spl
 
 checkDet :: AST.SPL -> AST.SPL
 checkDet spl =
@@ -52,7 +53,7 @@ checkDet spl =
         Left err -> Trace.trace (show err) undefined
         Right spl -> spl
 
-typeInferenceDet :: (TypeCtx -> a -> TInf (Substitution, Type)) -> Map.Map String Scheme -> a -> (Substitution, Type)
+typeInferenceDet :: (ScopedTypeCtx -> a -> TInf (Substitution, Type)) -> ScopedTypeCtx -> a -> (Substitution, Type)
 typeInferenceDet tInf' ctx e =
     case typeInference tInf' ctx e of
         Left err -> Trace.trace (show err) undefined
@@ -64,12 +65,12 @@ onlyType res =
         Left err -> Left err
         Right (_, t) -> Right t
 
-typeInference :: (TypeCtx -> a -> TInf (Substitution, Type)) -> Map.Map String Scheme -> a -> Either String (Substitution, Type)
+typeInference :: (ScopedTypeCtx -> a -> TInf (Substitution, Type)) -> ScopedTypeCtx -> a -> Either String (Substitution, Type)
 typeInference tInf' ctx e = res
     where
-        (res, _) = runTInf $ tInf' (TypeCtx ctx) e
+        (res, _) = runTInf $ tInf' ctx e
 
-typeInferenceExpr :: Map.Map String Scheme -> AST.Expression ->  Either String (Substitution, Type)
+typeInferenceExpr :: ScopedTypeCtx -> AST.Expression -> Either String (Substitution, Type)
 typeInferenceExpr = typeInference tInfExpr
 --typeInferenceExpr ctx e = do
 --    s, t) <- tInfExpr (TypeCtx ctx) e
@@ -158,24 +159,54 @@ composeSubstitution s1 s2 = (Map.map (apply s1) s2) `Map.union` s1
 newtype TypeCtx = TypeCtx (Map.Map String Scheme)
                   deriving (Show)
 
+type ScopedTypeCtx = Stack.Stack TypeCtx
+
 emptyMap :: Map.Map String Scheme
 emptyMap = Map.empty
 
 emptyCtx :: TypeCtx
 emptyCtx = TypeCtx (emptyMap)
 
--- |Remove a term variable from the context
-remove :: TypeCtx -> String -> TypeCtx
-remove (TypeCtx ctx) var = TypeCtx (Map.delete var ctx)
+emptyScopedCtx :: ScopedTypeCtx
+emptyScopedCtx = Stack.stackNew
 
-add :: TypeCtx -> String -> Scheme -> TypeCtx
---add (TypeCtx ctx) var scheme = TypeCtx (ctx `Map.union` (Map.singleton var scheme))
-add (TypeCtx ctx) var scheme = TypeCtx (Map.insert var scheme ctx)
+class TypingEnvironment a where
+    add :: a -> String -> Scheme ->  a
+    remove :: a -> String -> a
+
+instance TypingEnvironment TypeCtx where
+    --add (TypeCtx ctx) var scheme = TypeCtx (ctx `Map.union` (Map.singleton var scheme))
+    add (TypeCtx ctx) var scheme = TypeCtx (Map.insert var scheme ctx)
+    remove (TypeCtx ctx) var = TypeCtx (Map.delete var ctx)
+
+instance TypingEnvironment a => TypingEnvironment (Stack.Stack a) where
+    add stack var scheme =
+        case Stack.stackPop stack of
+            Just (stack', a) -> Stack.stackPush stack' (add a var scheme)
+            _ -> stack
+    remove stack var =
+        case Stack.stackPop stack of
+            Just (stack', a) -> Stack.stackPush stack' (remove a var)
+            _ -> stack
 
 instance Types TypeCtx where
     freeTypeVars (TypeCtx ctx) = freeTypeVars (Map.elems ctx)
     apply s (TypeCtx ctx) = TypeCtx (Map.map (apply s) ctx)
     applyOnlyRename s (TypeCtx ctx) = TypeCtx (Map.map (applyOnlyRename s) ctx)
+
+instance Types a => Types (Stack.Stack a) where
+    freeTypeVars stack =
+        case Stack.stackPop stack of
+            Just (stack', a) -> freeTypeVars a
+            _ -> Set.empty
+    apply s stack =
+        case Stack.stackPop stack of
+            Just (stack', a) -> Stack.stackPush stack' (apply s a)
+            _ -> stack
+    applyOnlyRename s stack =
+        case Stack.stackPop stack of
+            Just (stack', a) -> Stack.stackPush stack' (applyOnlyRename s a)
+            _ -> stack
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -263,31 +294,34 @@ mgu t1 t2                = throwError $ "types do not unify: " ++ show t1 ++ " a
 idName :: AST.Identifier -> String
 idName (AST.Identifier i, _) = i
 
-getScheme :: TypeCtx -> String -> TInf Scheme
-getScheme (TypeCtx ctx) varName =
-    case Map.lookup varName ctx of
-        Nothing -> throwError $ "unbound variable: " ++ varName
-        Just scheme -> return scheme
+getScheme :: ScopedTypeCtx -> String -> TInf Scheme
+getScheme stack varName = getScheme' (Stack.stackToList stack) varName
+    where
+        getScheme' :: [TypeCtx] -> String -> TInf Scheme
+        getScheme' [] _ = throwError $ "unbound variable: " ++ varName
+        getScheme' (TypeCtx ctx : ctxs) varName =
+            case Map.lookup varName ctx of
+                Nothing -> getScheme' ctxs varName
+                Just scheme -> return scheme
 
-tInfVarName :: TypeCtx -> String -> TInf Type
-tInfVarName (TypeCtx ctx) varName =
-    case Map.lookup varName ctx of
-        Nothing -> throwError $ "unbound variable: " ++ varName
-        Just scheme -> do
-            t <- instantiate scheme
-            return t
+tInfVarName :: ScopedTypeCtx -> String -> TInf Type
+tInfVarName stack varName = tInfVarName' (Stack.stackToList stack) varName
+    where
+        tInfVarName' :: [TypeCtx] -> String -> TInf Type
+        tInfVarName' [] _ = throwError $ "unbound variable: " ++ varName
+        tInfVarName' (TypeCtx ctx : ctxs) varName =
+            case Map.lookup varName ctx of
+                Nothing -> tInfVarName' ctxs varName
+                Just scheme -> instantiate scheme
 
 -- |Perform type inference on an AST identifier
-tInfId :: TypeCtx -> AST.Identifier -> TInf (Substitution, Type)
-tInfId (TypeCtx ctx) (AST.Identifier i, _) =
-    case Map.lookup i ctx of
-        Nothing -> throwError $ "unbound variable: " ++ i
-        Just scheme -> do
-            t <- instantiate scheme
-            return (nullSubstitution, t)
+tInfId :: ScopedTypeCtx -> AST.Identifier -> TInf (Substitution, Type)
+tInfId stack i = do
+    t <- tInfVarName stack (idName i)
+    return (nullSubstitution, t)
 
 -- |Perform type inference on an AST constant
-tInfConst :: TypeCtx -> AST.Constant -> TInf (Substitution, Type)
+tInfConst :: ScopedTypeCtx -> AST.Constant -> TInf (Substitution, Type)
 tInfConst _ (AST.ConstBool _, _) = return (nullSubstitution, TBool)
 tInfConst _ (AST.ConstInt _, _) = return (nullSubstitution, TInt)
 tInfConst _ (AST.ConstChar _, _) = return (nullSubstitution, TChar)
@@ -296,14 +330,14 @@ tInfConst _ (AST.ConstEmptyList, _) = do
     return (nullSubstitution, TList tVar)
 
 -- |Perform type inference on an AST expression
-tInfExpr :: TypeCtx -> AST.Expression -> TInf (Substitution, Type)
+tInfExpr :: ScopedTypeCtx -> AST.Expression -> TInf (Substitution, Type)
 tInfExpr ctx (AST.ExprIdentifier id, _) = tInfId ctx id
 tInfExpr ctx (AST.ExprIdentifierField id fields, _) = do
     (s, t) <- tInfId ctx id
     (s', t') <- tTraverseFields ctx t fields
     return (s' `composeSubstitution` s, t')
     where
-        tTraverseFields :: TypeCtx -> Type -> [AST.Field] -> TInf (Substitution, Type)
+        tTraverseFields :: ScopedTypeCtx -> Type -> [AST.Field] -> TInf (Substitution, Type)
         tTraverseFields _ t [] = return (nullSubstitution, t)
         tTraverseFields ctx t (field:fields) = do
             case field of
@@ -332,7 +366,7 @@ tInfExpr ctx (AST.ExprUnaryOp op e, _) = tInfUnaryOp ctx op e
 tInfExpr ctx (AST.ExprBinaryOp op e1 e2, _) = tInfBinaryOp ctx op e1 e2
 
 -- |Perform type inference on a list of AST expressions
-tInfExprs :: TypeCtx -> [AST.Expression] -> TInf (Substitution, [Type])
+tInfExprs :: ScopedTypeCtx -> [AST.Expression] -> TInf (Substitution, [Type])
 tInfExprs _ [] = return (nullSubstitution, [])
 tInfExprs ctx (expr:exprs) = do
     (s1, t) <- tInfExpr ctx expr
@@ -340,13 +374,13 @@ tInfExprs ctx (expr:exprs) = do
 
     return (s2 `composeSubstitution` s1, (apply s2 t) : ts)
 
-tInfTuple :: TypeCtx -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
+tInfTuple :: ScopedTypeCtx -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
 tInfTuple ctx e1 e2 = do
     (s1, t1) <- tInfExpr ctx e1
     (s2, t2) <- tInfExpr (apply s1 ctx) e2
     return (s2 `composeSubstitution` s1, TTuple (apply s2 t1) t2)
 
-tInfUnaryOp :: TypeCtx -> AST.UnaryOperator -> AST.Expression -> TInf (Substitution, Type)
+tInfUnaryOp :: ScopedTypeCtx -> AST.UnaryOperator -> AST.Expression -> TInf (Substitution, Type)
 tInfUnaryOp ctx (AST.UnaryOpNeg, _) e = do
     (s1, t1) <- tInfExpr ctx e
     s <- mgu t1 TBool
@@ -356,7 +390,7 @@ tInfUnaryOp ctx (AST.UnaryOpSubtr, _) e = do
     s <- mgu t1 TInt
     return (s `composeSubstitution` s1, TInt)
 
-tInfBinaryOp :: TypeCtx -> AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
+tInfBinaryOp :: ScopedTypeCtx -> AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
 tInfBinaryOp ctx (AST.BinaryOpOr, _) e1 e2 = do
     (s1, t1) <- tInfExpr ctx e1
     s1' <- mgu t1 TBool
@@ -405,12 +439,13 @@ tInfBinaryOp ctx (AST.BinaryOpMod, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpPlus
 
 -- |Perform type inference on the global SPL declarations. Rewrite the AST such that all variables are typed as
 -- completely as possible.
-tInfSPL :: TypeCtx -> AST.SPL -> TInf (AST.SPL, Substitution, Type)
+tInfSPL :: ScopedTypeCtx -> AST.SPL -> TInf (AST.SPL, Substitution, Type)
 tInfSPL ctx decls = do
-    ctx' <- addGlobalsToCtx ctx decls
+    let initCtx = Stack.stackPush ctx emptyCtx -- Create top scope
+    ctx' <- addGlobalsToCtx initCtx decls -- Add globals to to scope
     tInfSPL' ctx' decls
     where
-        addGlobalsToCtx :: TypeCtx -> AST.SPL -> TInf TypeCtx
+        addGlobalsToCtx :: ScopedTypeCtx -> AST.SPL -> TInf ScopedTypeCtx
         addGlobalsToCtx ctx [] = return ctx
         addGlobalsToCtx ctx (decl:decls) = do
             typeVar <- newTypeVar "global" -- Create a (temporary) new type var for this global
@@ -421,7 +456,7 @@ tInfSPL ctx decls = do
                 (AST.DeclF (AST.FunDeclTyped i _ _ _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
                 (AST.DeclF (AST.FunDeclUntyped i _ _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
 
-        tInfSPL' :: TypeCtx -> AST.SPL -> TInf (AST.SPL, Substitution, Type)
+        tInfSPL' :: ScopedTypeCtx -> AST.SPL -> TInf (AST.SPL, Substitution, Type)
         tInfSPL' _ [] = return ([], nullSubstitution, TVoid)
         tInfSPL' ctx (decl:decls) = do
             -- Infer type of the declaration
@@ -443,7 +478,7 @@ tInfSPL ctx decls = do
                         t2
                     )
 
-tInfDecl :: TypeCtx -> AST.Decl -> TInf (AST.Decl, Substitution, String, Type)
+tInfDecl :: ScopedTypeCtx -> AST.Decl -> TInf (AST.Decl, Substitution, String, Type)
 tInfDecl ctx (AST.DeclV decl, p) = do
     (decl', s, varName, t) <- tInfVarDecl ctx decl
     return ((AST.DeclV decl', p), s, varName, t)
@@ -451,19 +486,19 @@ tInfDecl ctx (AST.DeclF decl, p) = do
     (decl', s, varName, t) <- tInfFunDecl ctx decl
     return ((AST.DeclF decl', p), s, varName, t)
 
-tInfVarDecl :: TypeCtx -> AST.VarDecl -> TInf (AST.VarDecl, Substitution, String, Type)
+tInfVarDecl :: ScopedTypeCtx -> AST.VarDecl -> TInf (AST.VarDecl, Substitution, String, Type)
 tInfVarDecl ctx decl =
     case decl of
         (AST.VarDeclTyped _ identifier expr, p) -> tInfVarDecl' p ctx identifier expr -- todo: check annotation (probably by checking whether mgu on translated type and inferred type succeeds)
         (AST.VarDeclUntyped identifier expr, p) -> tInfVarDecl' p ctx identifier expr
     where
-        tInfVarDecl' :: Pos.Pos -> TypeCtx -> AST.Identifier -> AST.Expression -> TInf (AST.VarDecl, Substitution, String, Type)
+        tInfVarDecl' :: Pos.Pos -> ScopedTypeCtx -> AST.Identifier -> AST.Expression -> TInf (AST.VarDecl, Substitution, String, Type)
         tInfVarDecl' p ctx identifier expr = do
             (s, t) <- tInfExpr ctx expr
             let t' = translateType p t
             return ((AST.VarDeclTyped t' identifier expr, p), s, idName identifier, t)
 
-tInfFunDecl :: TypeCtx -> AST.FunDecl -> TInf (AST.FunDecl, Substitution, String, Type)
+tInfFunDecl :: ScopedTypeCtx -> AST.FunDecl -> TInf (AST.FunDecl, Substitution, String, Type)
 tInfFunDecl ctx decl =
     case decl of
         (AST.FunDeclTyped identifier args annotatedType stmts, p) ->
@@ -480,7 +515,7 @@ tInfFunDecl ctx decl =
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateFunType p t) ++ "."
         (AST.FunDeclUntyped identifier args stmts, p) -> tInfFunDecl' p ctx identifier args stmts
     where
-        tInfFunDecl' :: Pos.Pos -> TypeCtx -> AST.Identifier -> [AST.Identifier] -> [AST.Statement] -> TInf (AST.FunDecl, Substitution, String, Type)
+        tInfFunDecl' :: Pos.Pos -> ScopedTypeCtx -> AST.Identifier -> [AST.Identifier] -> [AST.Statement] -> TInf (AST.FunDecl, Substitution, String, Type)
         tInfFunDecl' p ctx identifier args stmts = do
             scopedCtx <- addArgsToCtx (idName identifier ++ "_") ctx args -- Create the function's scoped context
             (stmts', s, t) <- tInfStatements scopedCtx stmts
@@ -491,7 +526,7 @@ tInfFunDecl ctx decl =
 
             return ((AST.FunDeclTyped identifier args funTypeAST stmts', p), s, idName identifier, funType) -- todo calculate function type based on stmts return type and argument types
             where
-                addArgsToCtx :: String -> TypeCtx -> [AST.Identifier] -> TInf TypeCtx
+                addArgsToCtx :: String -> ScopedTypeCtx -> [AST.Identifier] -> TInf ScopedTypeCtx
                 addArgsToCtx prefix ctx [] = return ctx
                 addArgsToCtx prefix ctx (arg:args) = do
                     typeVar <- newTypeVar (prefix ++ "arg")
@@ -499,7 +534,7 @@ tInfFunDecl ctx decl =
                     return $ add ctx' (idName arg) (Scheme [] typeVar)
                     -- return $ add ctx' (idName arg) (generalize ctx' typeVar)
 
-                getArgsTypes :: TypeCtx -> [AST.Identifier] -> TInf [Type]
+                getArgsTypes :: ScopedTypeCtx -> [AST.Identifier] -> TInf [Type]
                 getArgsTypes _ [] = return []
                 getArgsTypes ctx (arg:args) = do
                     t <- tInfVarName ctx $ idName arg
@@ -507,7 +542,7 @@ tInfFunDecl ctx decl =
                     return $ t:ts
 
 
-tInfStatements :: TypeCtx -> [AST.Statement] -> TInf ([AST.Statement], Substitution, Type)
+tInfStatements :: ScopedTypeCtx -> [AST.Statement] -> TInf ([AST.Statement], Substitution, Type)
 tInfStatements _ [] = return ([], nullSubstitution, TVoid)
 tInfStatements ctx (statement:statements) = do
     (statement', s1, varName, t1, returnsValue) <- tInfStatement ctx statement
@@ -531,7 +566,7 @@ tInfStatements ctx (statement:statements) = do
                         apply s t2)
         else return (statement' : statements', s2 `composeSubstitution` s1, t2)
 
-tInfStatement :: TypeCtx -> AST.Statement -> TInf (AST.Statement, Substitution, String, Type, Bool)
+tInfStatement :: ScopedTypeCtx -> AST.Statement -> TInf (AST.Statement, Substitution, String, Type, Bool)
 tInfStatement ctx (AST.StmtVarDecl decl, p) = do
     (decl', s, varName, t) <- tInfVarDecl ctx decl
     return ((AST.StmtVarDecl decl', p), s, varName, t, False)
