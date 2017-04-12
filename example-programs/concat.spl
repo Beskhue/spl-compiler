@@ -1,3 +1,7 @@
+length (l) :: [a] -> Int { 
+    return -1;
+}
+
 concat (l1, l2) :: [Char] [Char] -> [Char] {
     if (length(l1) == 0) {
         return l2;
