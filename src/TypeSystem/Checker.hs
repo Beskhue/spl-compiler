@@ -339,12 +339,22 @@ tInfSPL ctx decls = do
         tInfSPL' :: TypeCtx -> AST.SPL -> TInf (AST.SPL, Substitution, Type)
         tInfSPL' _ [] = return ([], nullSubstitution, TVoid)
         tInfSPL' ctx (decl:decls) = do
+            -- Infer type of the declaration
             (decl', s1, varName, t1) <- tInfDecl ctx decl
+
+            -- Get the type scheme of the variable/function we just declared and unify it with the actual type
             (Scheme _ t1') <- getScheme ctx varName
-            s' <- mgu t1 t1'
-            let ctx' = apply s' ctx
-            (decls', s2, t2) <- tInfSPL' ctx' decls
-            return (decl' : decls', s1 `composeSubstitution` s2, t2)
+            s2 <- mgu t1 t1'
+
+            -- Get the next declarations
+            (decls', s3, t2) <- tInfSPL' (apply (s2 `composeSubstitution` s1) ctx) decls
+
+            return (
+                        -- Apply the substitutions to the declaration
+                        apply (s3 `composeSubstitution` s2) decl' : decls',
+                        s3 `composeSubstitution` s2 `composeSubstitution` s1,
+                        t2
+                    )
 
 tInfDecl :: TypeCtx -> AST.Decl -> TInf (AST.Decl, Substitution, String, Type)
 tInfDecl ctx (AST.DeclV decl, p) = do
