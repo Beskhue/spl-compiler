@@ -473,6 +473,11 @@ tInfStatement ctx (AST.StmtIfElse expr st1 st2, p) = do
             "",
             apply s2' st1,
             False)
+tInfStatement ctx (AST.StmtWhile expr st, p) = do
+    (s1, t1) <- tInfExpr ctx expr
+    s <- mgu t1 TBool
+    (st', s2, varName, t2, returnsValue) <- tInfStatement (apply (s `composeSubstitution` s1) ctx) st
+    return ((AST.StmtWhile expr st', p), s2 `composeSubstitution` s `composeSubstitution` s1, varName, t2, returnsValue)
 tInfStatement ctx (AST.StmtBlock stmts, p) = do
     (stmts, s, t) <- tInfStatements ctx stmts
     case t of
