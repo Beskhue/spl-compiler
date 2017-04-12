@@ -339,11 +339,21 @@ tInfExprs ctx (expr:exprs) = do
     return (s2 `composeSubstitution` s1, (apply s2 t) : ts)
 
 tInfBinaryOp :: TypeCtx -> AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
+tInfBinaryOp ctx (AST.BinaryOpOr, _) e1 e2 = do
+    (s1, t1) <- tInfExpr ctx e1
+    s1' <- mgu t1 TBool
+
+    (s2, t2) <- tInfExpr (apply (s1' `composeSubstitution` s1) ctx) e2
+    s2' <- mgu (apply (s2 `composeSubstitution` s1') t1) t2
+
+    return (s2' `composeSubstitution` s2 `composeSubstitution` s1' `composeSubstitution` s1, TBool)
+tInfBinaryOp ctx (AST.BinaryOpAnd, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpOr, p) e1 e2
 tInfBinaryOp ctx (AST.BinaryOpEq, _) e1 e2 = do
     (s1, t1) <- tInfExpr ctx e1
     (s2, t2) <- tInfExpr (apply s1 ctx) e2
     s <- mgu (apply s2 t1) t2
     return (s `composeSubstitution` s2 `composeSubstitution` s1, TBool)
+tInfBinaryOp ctx (AST.BinaryOpNEq, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpEq, p) e1 e2
 tInfBinaryOp ctx (AST.BinaryOpLT, _) e1 e2 = do
     (s1, t1) <- tInfExpr ctx e1
     s1' <- mgu t1 TInt
@@ -352,6 +362,9 @@ tInfBinaryOp ctx (AST.BinaryOpLT, _) e1 e2 = do
     s2' <- mgu (apply (s2 `composeSubstitution` s1') t1) t2
 
     return (s2' `composeSubstitution` s2 `composeSubstitution` s1' `composeSubstitution` s1, TBool)
+tInfBinaryOp ctx (AST.BinaryOpGT, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpLT, p) e1 e2
+tInfBinaryOp ctx (AST.BinaryOpLTE, p) e1 e2= tInfBinaryOp ctx (AST.BinaryOpLT, p) e1 e2
+tInfBinaryOp ctx (AST.BinaryOpGTE, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpLT, p) e1 e2
 tInfBinaryOp ctx (AST.BinaryOpConcat, _) e1 e2 = do
     (s1, t1) <- tInfExpr ctx e1
     (s2, t2) <- tInfExpr (apply s1 ctx) e2
@@ -367,6 +380,8 @@ tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
     return (s2' `composeSubstitution` s2 `composeSubstitution` s1' `composeSubstitution` s1, TInt)
 tInfBinaryOp ctx (AST.BinaryOpSubtr, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpPlus, p) e1 e2
 tInfBinaryOp ctx (AST.BinaryOpMult, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpPlus, p) e1 e2
+tInfBinaryOp ctx (AST.BinaryOpDiv, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpPlus, p) e1 e2
+tInfBinaryOp ctx (AST.BinaryOpMod, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpPlus, p) e1 e2
 
 ------------------------------------------------------------------------------------------------------------------------
 
