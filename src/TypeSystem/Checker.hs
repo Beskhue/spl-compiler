@@ -431,7 +431,7 @@ tInfStatements ctx (statement:statements) = do
             case t2 of
                 TVoid -> return (apply s $ statement' : statements', s, apply s t1)
                 _ -> do
-                    s <- mgu (apply s2 t1) t2
+                    s <- mgu (apply s2 t1) t2 -- todo: both the composed adn the mgu substitution are called 's', probably will be buggy
                     return (apply s $ statement' : statements', s, apply s t1)
             )
 
