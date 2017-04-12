@@ -349,9 +349,13 @@ tInfSPL ctx decls = do
             -- Get the next declarations
             (decls', s3, t2) <- tInfSPL' (apply (s2 `composeSubstitution` s1) ctx) decls
 
+            -- Infer type for the declaration again, this time with information from the next declarations
+            (decl'', s1'', varName'', t1'') <- tInfDecl (apply (s3 `composeSubstitution` s2 `composeSubstitution` s1) ctx) decl
+
             return (
                         -- Apply the substitutions to the declaration
-                        apply (s3 `composeSubstitution` s2) decl' : decls',
+                        -- apply (s3) decl' : decls',
+                        apply s1'' decl'' : decls',
                         s3 `composeSubstitution` s2 `composeSubstitution` s1,
                         t2
                     )
@@ -399,6 +403,7 @@ tInfFunDecl ctx decl =
                     typeVar <- newTypeVar (prefix ++ "arg")
                     ctx' <- addArgsToCtx prefix ctx args
                     return $ add ctx' (idName arg) (Scheme [] typeVar)
+                    -- return $ add ctx' (idName arg) (generalize ctx' typeVar)
 
                 getArgsTypes :: TypeCtx -> [AST.Identifier] -> TInf [Type]
                 getArgsTypes _ [] = return []
