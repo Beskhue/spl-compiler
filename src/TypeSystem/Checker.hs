@@ -46,6 +46,12 @@ check spl =
     where
         (res, _) = runTInf $ tInfSPL emptyCtx spl
 
+checkDet :: AST.SPL -> AST.SPL
+checkDet spl =
+    case check spl of
+        Left err -> Trace.trace (show err) undefined
+        Right spl -> spl
+
 typeInferenceDet :: (TypeCtx -> a -> TInf (Substitution, Type)) -> Map.Map String Scheme -> a -> (Substitution, Type)
 typeInferenceDet tInf' ctx e =
     case typeInference tInf' ctx e of
@@ -404,7 +410,18 @@ tInfVarDecl ctx decl =
 tInfFunDecl :: TypeCtx -> AST.FunDecl -> TInf (AST.FunDecl, Substitution, String, Type)
 tInfFunDecl ctx decl =
     case decl of
-        (AST.FunDeclTyped identifier args _ stmts, p) -> tInfFunDecl' p ctx identifier args stmts -- todo: check annotation
+        (AST.FunDeclTyped identifier args annotatedType stmts, p) ->
+            let annotatedT = rTranslateFunType annotatedType in do
+            (ast, s, str, t) <- tInfFunDecl' p ctx identifier args stmts
+            s' <- (mgu annotatedT t) `catchError` (\_ ->
+                throwError $ "Could not unify types"
+                    ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
+                    ++ ". Inferred type: " ++ AST.prettyPrint (translateFunType p t) ++ ".")
+            if apply s' annotatedT == annotatedT
+                then return (ast, s, str, t)
+                else throwError $ "Expected type is more general than the inferred type"
+                    ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
+                    ++ ". Inferred type: " ++ AST.prettyPrint (translateFunType p t) ++ "."
         (AST.FunDeclUntyped identifier args stmts, p) -> tInfFunDecl' p ctx identifier args stmts
     where
         tInfFunDecl' :: Pos.Pos -> TypeCtx -> AST.Identifier -> [AST.Identifier] -> [AST.Statement] -> TInf (AST.FunDecl, Substitution, String, Type)
