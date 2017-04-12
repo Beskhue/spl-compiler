@@ -194,10 +194,10 @@ runTInf t = runState (runReaderT (runExceptT t) initTInfCtx) initTInfState
 
 -- |Generate a new type variable using the type name supplier
 newTypeVar :: String -> TInf Type
-newTypeVar prefix = do
+newTypeVar suffix = do
     s <- get
     put s {tInfSupply = tInfSupply s + 1}
-    return (TVar (prefix ++ show (tInfSupply s)))
+    return (TVar ("_" ++ show (tInfSupply s) ++ suffix))
 
 -- |Replace bound type variables in a scheme with fresh type variables
 instantiate :: Scheme -> TInf Type
