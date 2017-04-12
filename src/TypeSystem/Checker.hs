@@ -359,7 +359,8 @@ tInfFunDecl ctx decl =
         tInfFunDecl' :: Pos.Pos -> TypeCtx -> AST.Identifier -> [AST.Identifier] -> [AST.Statement] -> TInf (AST.FunDecl, Substitution, String, Type)
         tInfFunDecl' p ctx identifier args stmts = do
             scopedCtx <- addArgsToCtx (idName identifier ++ "_") ctx args -- Create the function's scoped context
-            throwError $ show scopedCtx
+            (stmts', s, t) <- tInfStatements scopedCtx stmts
+            return ((AST.FunDeclTyped identifier args undefined stmts', p), s, idName identifier, t) -- todo calculate function type based on stmts return type and argument types
             where
                 addArgsToCtx :: String -> TypeCtx -> [AST.Identifier] -> TInf TypeCtx
                 addArgsToCtx prefix ctx [] = return ctx
@@ -372,13 +373,27 @@ tInfFunDecl ctx decl =
 tInfStatements :: TypeCtx -> [AST.Statement] -> TInf ([AST.Statement], Substitution, Type)
 tInfStatements _ [] = return ([], nullSubstitution, TVoid)
 tInfStatements ctx (statement:statements) = do
-    (statement', s1, varName, t1) <- tInfStatement ctx statement
-    let ctx' = add ctx varName (generalize ctx t1)
-    (statements', s2, t2) <- tInfStatements ctx' statements
-    -- s <- mgu (apply s2 t1) t2
-    return (statement' : statements', s2, t2)
+    (statement', s1, varName, t1, returnsValue) <- tInfStatement ctx statement
 
-tInfStatement :: TypeCtx -> AST.Statement -> TInf (AST.Statement, Substitution, String, Type)
+    -- Update local context if the statement declared a new variable
+    let ctx' = (if varName == ""
+                then apply s1 ctx
+                else add ctx varName (generalize (apply s1 ctx) t1))
+
+    (statements', s2, t2) <- tInfStatements ctx' statements
+
+    case returnsValue of
+        True -> (
+            case t2 of
+                TVoid -> return (statement' : statements', s1 `composeSubstitution` s2, apply s2 t1)
+                _ -> do
+                    s <- mgu (apply s2 t1) t2
+                    return (statement' : statements', s1 `composeSubstitution` s2, apply s t1)
+            )
+
+        False -> return (statement' : statements', s1 `composeSubstitution` s2, TVoid)
+
+tInfStatement :: TypeCtx -> AST.Statement -> TInf (AST.Statement, Substitution, String, Type, Bool)
 tInfStatement = undefined
 
 ------------------------------------------------------------------------------------------------------------------------
