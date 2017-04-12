@@ -444,6 +444,14 @@ tInfStatement ctx (AST.StmtVarDecl decl, p) = do
 tInfStatement ctx (AST.StmtReturn expr, p) = do
     (s, t) <- tInfExpr ctx expr
     return ((AST.StmtReturn expr, p), s, "", t, True)
+tInfStatement ctx (AST.StmtAssignment identifier expr, p) = do
+    (Scheme _ t) <- getScheme ctx (idName identifier)
+    (s1, t1) <- tInfExpr ctx expr
+
+    s <- mgu t t1
+
+    let t' = translateType p (apply s t1)
+    return ((AST.StmtAssignment identifier expr, p), s `composeSubstitution` s1, "", apply s t1, False)
 
 ------------------------------------------------------------------------------------------------------------------------
 
