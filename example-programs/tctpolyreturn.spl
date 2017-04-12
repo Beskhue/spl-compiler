@@ -1,0 +1,28 @@
+valid () {
+    if (True) {
+        return 1;
+    } else {
+        return 5;
+    }
+    
+    if (True) {
+        return 7;
+    } else {
+    }
+    
+    var x = 1;
+    while (True) {
+        x = x + 1;
+    }
+}
+
+/*
+invalid () {
+    {
+        return 1;
+    }
+    {
+        return 'a';
+    }
+}
+*/

@@ -2,12 +2,10 @@ eq (x, y) {
     return x == y;
 }
 
-/*
 check_err () {
     var a = eq(1, 2);
     return eq('a', 'b');
 }
-*/
 
 check1 () {
     return eq(1, 2);

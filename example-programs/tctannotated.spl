@@ -1,0 +1,15 @@
+valid (x) :: Int -> Int {
+    return x + 1;
+}
+
+/*
+invalid1 (x) :: Char -> Char {
+    return x + 1;
+}
+*/
+
+/*
+invalid2 (x) :: a -> a {
+    return x + 1;
+}
+*/

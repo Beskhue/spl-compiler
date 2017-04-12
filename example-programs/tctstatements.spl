@@ -1,5 +1,19 @@
 eq (x, y) {
     if (x)
         return y;
+        
+    if (x == False)
+    {
+        var x = 5;
+    }
+    else
+    {
+        var x = [];
+    }
+    
+    {
+        var x = 'a';
+    }
+        
     return True;
 }
