@@ -243,6 +243,20 @@ mgu t1 t2                = throwError $ "types do not unify: " ++ show t1 ++ " a
 idName :: AST.Identifier -> String
 idName (AST.Identifier i, _) = i
 
+getScheme :: TypeCtx -> String -> TInf Scheme
+getScheme (TypeCtx ctx) varName =
+    case Map.lookup varName ctx of
+        Nothing -> throwError $ "unbound variable: " ++ varName
+        Just scheme -> return scheme
+
+tInfVarName :: TypeCtx -> String -> TInf Type
+tInfVarName (TypeCtx ctx) varName =
+    case Map.lookup varName ctx of
+        Nothing -> throwError $ "unbound variable: " ++ varName
+        Just scheme -> do
+            t <- instantiate scheme
+            return t
+
 -- |Perform type inference on an AST identifier
 tInfId :: TypeCtx -> AST.Identifier -> TInf (Substitution, Type)
 tInfId (TypeCtx ctx) (AST.Identifier i, _) =
@@ -286,7 +300,7 @@ tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
 tInfSPL :: TypeCtx -> AST.SPL -> TInf (AST.SPL, Substitution, Type)
 tInfSPL ctx decls = do
     ctx' <- addGlobalsToCtx ctx decls
-    throwError $ show ctx'
+    tInfSPL' ctx' decls
     where
         addGlobalsToCtx :: TypeCtx -> AST.SPL -> TInf TypeCtx
         addGlobalsToCtx ctx [] = return ctx
@@ -294,10 +308,20 @@ tInfSPL ctx decls = do
             typeVar <- newTypeVar "a" -- Create a (temporary) new type var for this global
             ctx' <- addGlobalsToCtx ctx decls
             case decl of
-                (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> return $ add ctx' (idName i) (generalize ctx typeVar)
-                (AST.DeclV (AST.VarDeclUntyped i _, _), _) -> return $ add ctx' (idName i) (generalize ctx typeVar)
-                (AST.DeclF (AST.FunDeclTyped i _ _ _, _), _) -> return $ add ctx' (idName i) (generalize ctx typeVar)
-                (AST.DeclF (AST.FunDeclUntyped i _ _, _), _) -> return $ add ctx' (idName i) (generalize ctx typeVar)
+                (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
+                (AST.DeclV (AST.VarDeclUntyped i _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
+                (AST.DeclF (AST.FunDeclTyped i _ _ _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
+                (AST.DeclF (AST.FunDeclUntyped i _ _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
+
+        tInfSPL' :: TypeCtx -> AST.SPL -> TInf (AST.SPL, Substitution, Type)
+        tInfSPL' _ [] = return ([], nullSubstitution, TVoid)
+        tInfSPL' ctx (decl:decls) = do
+            (decl', s1, varName, t1) <- tInfDecl ctx decl
+            (Scheme _ t1') <- getScheme ctx varName
+            s' <- mgu t1 t1'
+            let ctx' = apply s' ctx
+            (decls', s2, t2) <- tInfSPL' ctx' decls
+            return (decl' : decls', s1 `composeSubstitution` s2, t2)
 
 tInfDecl :: TypeCtx -> AST.Decl -> TInf (AST.Decl, Substitution, String, Type)
 tInfDecl ctx (AST.DeclV decl, p) = do
