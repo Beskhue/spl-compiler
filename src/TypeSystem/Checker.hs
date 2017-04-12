@@ -282,6 +282,11 @@ tInfExpr ctx (AST.ExprConstant const, _) = tInfConst ctx const
 tInfExpr ctx (AST.ExprBinaryOp op e1 e2, _) = tInfBinaryOp ctx op e1 e2
 
 tInfBinaryOp :: TypeCtx -> AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
+tInfBinaryOp ctx (AST.BinaryOpEq, _) e1 e2 = do
+    (s1, t1) <- tInfExpr ctx e1
+    (s2, t2) <- tInfExpr (apply s1 ctx) e2
+    s <- mgu (apply s2 t1) t2
+    return (s `composeSubstitution` s2 `composeSubstitution` s1, TBool)
 tInfBinaryOp ctx (AST.BinaryOpConcat, _) e1 e2 = do
     (s1, t1) <- tInfExpr ctx e1
     (s2, t2) <- tInfExpr (apply s1 ctx) e2
@@ -297,6 +302,8 @@ tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
 
 ------------------------------------------------------------------------------------------------------------------------
 
+-- |Perform type inference on the global SPL declarations. Rewrite the AST such that all variables are typed as
+-- completely as possible.
 tInfSPL :: TypeCtx -> AST.SPL -> TInf (AST.SPL, Substitution, Type)
 tInfSPL ctx decls = do
     ctx' <- addGlobalsToCtx ctx decls
