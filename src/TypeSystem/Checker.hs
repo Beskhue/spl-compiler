@@ -345,19 +345,17 @@ tInfSPL ctx decls = do
 
             -- Get the type scheme of the variable/function we just declared and unify it with the actual type
             (Scheme _ t1') <- getScheme ctx varName
-            s2 <- mgu t1 t1'
+            s2 <- mgu t1' t1
 
-            -- Get the next declarations
-            (decls', s3, t2) <- tInfSPL' (apply (s2 `composeSubstitution` s1) ctx) decls
+            -- Get the next declarations, using the unified type scheme
+            (decls', s3, t2) <- tInfSPL' (apply s2 ctx) decls
 
-            -- Infer type for the declaration again, this time with information from the next declarations
-            (decl'', s1'', varName'', t1'') <- tInfDecl (apply (s3 `composeSubstitution` s2 `composeSubstitution` s1) ctx) decl
+            -- Infer type for this declaration again, using the "back-flown" information from the next declarations
+            (declPost, s1Post, varNamePost, t1Post) <- tInfDecl (apply s3 ctx) decl
 
             return (
-                        -- Apply the substitutions to the declaration
-                        -- apply (s3) decl' : decls',
-                        apply s1'' decl'' : decls',
-                        s3 `composeSubstitution` s2 `composeSubstitution` s1,
+                        declPost : decls',
+                        s3 `composeSubstitution` s2,
                         t2
                     )
 
