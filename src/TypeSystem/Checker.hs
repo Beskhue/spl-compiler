@@ -265,34 +265,59 @@ tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
 
 ------------------------------------------------------------------------------------------------------------------------
 
+translateType :: Pos.Pos -> Type -> AST.Type
+translateType p TBool = (AST.TypeBool, p)
+translateType p TInt = (AST.TypeInt, p)
+translateType p TChar = (AST.TypeChar, p)
 
 
 ------------------------------------------------------------------------------------------------------------------------
 
-type TCheck a = ExceptT String (State TypeCtx) a
+type Rewrite = Bool
+type TCheck a = ExceptT String (State (TypeCtx, Rewrite)) a
 
 -- |The type check runner.
-runTCheck :: TCheck a -> (Either String a, TypeCtx)
-runTCheck t = runState (runExceptT t) emptyCtx
+runTCheck :: TCheck a -> (Either String a, (TypeCtx, Rewrite))
+runTCheck t = runState (runExceptT t) (emptyCtx, False)
 
 -- |Get the context from the state
 getCtx :: TCheck TypeCtx
-getCtx = get
+getCtx = do
+    (ctx, _) <- get
+    return ctx
+
+getRewrite :: TCheck Rewrite
+getRewrite = do
+    (_, rewrite) <- get
+    return rewrite
+
+-- |Set the type checker to type rewrite mode (second pass)
+setRewrite :: TCheck ()
+setRewrite = do
+    (ctx, _) <- get
+    put (ctx, True)
 
 addTermToCtx :: String -> Substitution -> Type -> TCheck ()
 addTermToCtx str s t = do
     ctx <- getCtx
     let ctx' = apply s ctx in
-        let scheme = generalize ctx' t in
-            put $ add ctx' str scheme
+        let scheme = generalize ctx' t in do
+            r <- getRewrite
+            put (add ctx' str scheme, r)
 
 -- |Type checks an SPL program, and returns a new AST that is typed as complete as possible
 tCheckSPL :: AST.SPL -> TCheck AST.SPL
-tCheckSPL [] = return []
-tCheckSPL (decl:decls) = do
-    decl' <- tCheckDecl decl
-    decls' <- tCheckSPL decls
-    return $ decl : decls
+tCheckSPL decls = do
+    tCheckSPL' decls
+    setRewrite
+    tCheckSPL' decls
+    where
+        tCheckSPL' :: AST.SPL -> TCheck AST.SPL
+        tCheckSPL' [] = return []
+        tCheckSPL' (decl:decls) = do
+            decl' <- tCheckDecl decl
+            decls' <- tCheckSPL' decls
+            return $ decl' : decls'
 
 tCheckDecl :: AST.Decl -> TCheck AST.Decl
 tCheckDecl (AST.DeclV v, p) = do
@@ -307,7 +332,10 @@ tCheckVarDecl (AST.VarDeclUntyped identifier expr, p) = do
         (Left err, _) -> throwError $ err
         (Right (s, t), _) -> do
             addTermToCtx (idName identifier) s t
-            return (AST.VarDeclUntyped identifier expr, p)
+            r <- getRewrite
+            if r
+                then return (AST.VarDeclTyped (translateType p t) identifier expr, p)
+                else return (AST.VarDeclUntyped identifier expr, p)
 
 tCheckFunDecl :: AST.FunDecl -> TCheck AST.FunDecl
 tCheckFunDecl = undefined
