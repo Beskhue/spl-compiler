@@ -399,7 +399,7 @@ tInfStatement ctx (AST.StmtVarDecl decl, p) = do
     return ((AST.StmtVarDecl decl', p), s, varName, t, False)
 tInfStatement ctx (AST.StmtReturn expr, p) = do
     (s, t) <- tInfExpr ctx expr
-    return ((AST.StmtReturn expr, p), s, "", t, False)
+    return ((AST.StmtReturn expr, p), s, "", t, True)
 
 ------------------------------------------------------------------------------------------------------------------------
 
