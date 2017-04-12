@@ -349,17 +349,28 @@ tCheckDecl (AST.DeclV v, p) = do
     return $ (AST.DeclV varDecl, p)
 
 tCheckVarDecl :: AST.VarDecl -> TCheck AST.VarDecl
-tCheckVarDecl (AST.VarDeclTyped annotatedType identifier expr, p) = undefined
-tCheckVarDecl (AST.VarDeclUntyped identifier expr, p) = do
-    ctx <- getCtx
-    case runTInf $ tInfExpr ctx expr of
-        (Left err, _) -> throwError $ err
-        (Right (s, t), _) -> do
-            addTermToCtx (idName identifier) s t
-            r <- getRewrite
-            if r
-                then return (AST.VarDeclTyped (translateType p t) identifier expr, p)
-                else return (AST.VarDeclUntyped identifier expr, p)
+tCheckVarDecl v =
+    case v of
+        (AST.VarDeclTyped annotatedType identifier expr, p) -> do
+            (ast, t) <- tCheckVarDecl' p identifier expr
+            if rTranslateType annotatedType == t
+                then return ast
+                else throwError $ "Expected type: " ++ show (rTranslateType annotatedType) ++ ". Actual type: " ++ show t
+        (AST.VarDeclUntyped identifier expr, p) -> do
+            (ast, _) <- tCheckVarDecl' p identifier expr
+            return ast
+    where
+        tCheckVarDecl' :: Pos.Pos -> AST.Identifier -> AST.Expression -> TCheck (AST.VarDecl, Type)
+        tCheckVarDecl' p identifier expr = do
+            ctx <- getCtx
+            case runTInf $ tInfExpr ctx expr of
+                (Left err, _) -> throwError $ err
+                (Right (s, t), _) -> do
+                    addTermToCtx (idName identifier) s t
+                    r <- getRewrite
+                    if r
+                        then return ((AST.VarDeclTyped (translateType p t) identifier expr, p), t)
+                        else return ((AST.VarDeclUntyped identifier expr, p), t)
 
 tCheckFunDecl :: AST.FunDecl -> TCheck AST.FunDecl
 tCheckFunDecl = undefined
