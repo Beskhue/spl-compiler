@@ -360,6 +360,11 @@ tInfFunDecl ctx decl =
         tInfFunDecl' p ctx identifier args stmts = do
             scopedCtx <- addArgsToCtx (idName identifier ++ "_") ctx args -- Create the function's scoped context
             (stmts', s, t) <- tInfStatements scopedCtx stmts
+
+            throwError $ show (apply s scopedCtx)
+            -- throwError $ show s
+            throwError $ show t
+
             return ((AST.FunDeclTyped identifier args undefined stmts', p), s, idName identifier, t) -- todo calculate function type based on stmts return type and argument types
             where
                 addArgsToCtx :: String -> TypeCtx -> [AST.Identifier] -> TInf TypeCtx
@@ -391,7 +396,7 @@ tInfStatements ctx (statement:statements) = do
                     return (statement' : statements', s1 `composeSubstitution` s2, apply s t1)
             )
 
-        False -> return (statement' : statements', s1 `composeSubstitution` s2, TVoid)
+        False -> return (statement' : statements', s1 `composeSubstitution` s2, t2)
 
 tInfStatement :: TypeCtx -> AST.Statement -> TInf (AST.Statement, Substitution, String, Type, Bool)
 tInfStatement ctx (AST.StmtVarDecl decl, p) = do
