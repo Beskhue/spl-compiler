@@ -151,8 +151,8 @@ remove :: TypeCtx -> String -> TypeCtx
 remove (TypeCtx ctx) var = TypeCtx (Map.delete var ctx)
 
 add :: TypeCtx -> String -> Scheme -> TypeCtx
-add (TypeCtx ctx) var scheme = TypeCtx (ctx `Map.union` (Map.singleton var scheme))
---add (TypeCtx ctx) var scheme = TypeCtx (Map.insert var scheme ctx)
+--add (TypeCtx ctx) var scheme = TypeCtx (ctx `Map.union` (Map.singleton var scheme))
+add (TypeCtx ctx) var scheme = TypeCtx (Map.insert var scheme ctx)
 
 instance Types TypeCtx where
     freeTypeVars (TypeCtx ctx) = freeTypeVars (Map.elems ctx)
