@@ -53,7 +53,7 @@ type VarDecl         = (VarDecl', Pos)
 
 instance PrettyPrint VarDecl where
     prettyPrint (VarDeclTyped t i e, _) = prettyPrint t ++ " " ++ prettyPrint i ++ " = " ++ prettyPrint e ++ ";"
-    prettyPrint (VarDeclUntyped i e, _) = "Var " ++ prettyPrint i ++ " = " ++ prettyPrint e ++ ";"
+    prettyPrint (VarDeclUntyped i e, _) = "var " ++ prettyPrint i ++ " = " ++ prettyPrint e ++ ";"
 
 instance (ASTEq VarDecl) where
     astEq (VarDeclTyped t1 i1 e1, _) (VarDeclTyped t2 i2 e2, _) = astEq t1 t2 && astEq i1 i2 && astEq e1 e2
