@@ -204,7 +204,7 @@ newTypeVar :: String -> TInf Type
 newTypeVar suffix = do
     s <- get
     put s {tInfSupply = tInfSupply s + 1}
-    return (TVar ("_" ++ show (tInfSupply s) ++ suffix))
+    return (TVar ("t_" ++ show (tInfSupply s) ++ suffix))
 
 -- |Replace bound type variables in a scheme with fresh type variables
 instantiate :: Scheme -> TInf Type
