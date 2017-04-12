@@ -31,8 +31,10 @@ import qualified Data.AST as AST
 ------------------------------------------------------------------------------------------------------------------------
 
 -- |Todo: implement main SPL checker
-check :: AST.SPL -> Either Int Int
-check spl = undefined
+check :: AST.SPL -> Either String AST.SPL
+check spl = res
+    where
+        (res, _) = runTCheck $ tCheckSPL spl
 
 typeInferenceDet :: (TypeCtx -> a -> TInf (Substitution, Type)) -> Map.Map String Scheme -> a -> (Substitution, Type)
 typeInferenceDet tInf' ctx e =
@@ -133,6 +135,9 @@ emptyCtx = TypeCtx (emptyMap)
 -- |Remove a term variable from the context
 remove :: TypeCtx -> String -> TypeCtx
 remove (TypeCtx ctx) var = TypeCtx (Map.delete var ctx)
+
+add :: TypeCtx -> String -> Scheme -> TypeCtx
+add (TypeCtx ctx) var scheme = TypeCtx (Map.insert var scheme ctx)
 
 instance Types TypeCtx where
     freeTypeVars (TypeCtx ctx) = freeTypeVars (Map.elems ctx)
@@ -260,8 +265,51 @@ tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
 
 ------------------------------------------------------------------------------------------------------------------------
 
--- |Type checks an SPL program, and returns a new AST that is fully typed
-tCheckSPL :: AST.SPL -> Either String AST.SPL
-tCheckSPL = undefined
+
+
+------------------------------------------------------------------------------------------------------------------------
+
+type TCheck a = ExceptT String (State TypeCtx) a
+
+-- |The type check runner.
+runTCheck :: TCheck a -> (Either String a, TypeCtx)
+runTCheck t = runState (runExceptT t) emptyCtx
+
+-- |Get the context from the state
+getCtx :: TCheck TypeCtx
+getCtx = get
+
+addTermToCtx :: String -> Substitution -> Type -> TCheck ()
+addTermToCtx str s t = do
+    ctx <- getCtx
+    let ctx' = apply s ctx in
+        let scheme = generalize ctx' t in
+            put $ add ctx' str scheme
+
+-- |Type checks an SPL program, and returns a new AST that is typed as complete as possible
+tCheckSPL :: AST.SPL -> TCheck AST.SPL
+tCheckSPL [] = return []
+tCheckSPL (decl:decls) = do
+    decl' <- tCheckDecl decl
+    decls' <- tCheckSPL decls
+    return $ decl : decls
+
+tCheckDecl :: AST.Decl -> TCheck AST.Decl
+tCheckDecl (AST.DeclV v, p) = do
+    varDecl <- tCheckVarDecl v
+    return $ (AST.DeclV varDecl, p)
+
+tCheckVarDecl :: AST.VarDecl -> TCheck AST.VarDecl
+tCheckVarDecl (AST.VarDeclTyped annotatedType identifier expr, p) = undefined
+tCheckVarDecl (AST.VarDeclUntyped identifier expr, p) = do
+    ctx <- getCtx
+    case runTInf $ tInfExpr ctx expr of
+        (Left err, _) -> throwError $ err
+        (Right (s, t), _) -> do
+            addTermToCtx (idName identifier) s t
+            return (AST.VarDeclUntyped identifier expr, p)
+
+tCheckFunDecl :: AST.FunDecl -> TCheck AST.FunDecl
+tCheckFunDecl = undefined
 
 ------------------------------------------------------------------------------------------------------------------------
