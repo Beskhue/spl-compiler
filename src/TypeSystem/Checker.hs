@@ -327,6 +327,7 @@ tInfExpr ctx (AST.ExprFunCall id args, _) = do
     s <- mgu (apply s2 t1) (TFunction ts tReturn)
     return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s tReturn)
 tInfExpr ctx (AST.ExprConstant const, _) = tInfConst ctx const
+tInfExpr ctx (AST.ExprTuple e1 e2, _) = tInfTuple ctx e1 e2
 tInfExpr ctx (AST.ExprUnaryOp op e, _) = tInfUnaryOp ctx op e
 tInfExpr ctx (AST.ExprBinaryOp op e1 e2, _) = tInfBinaryOp ctx op e1 e2
 
@@ -338,6 +339,12 @@ tInfExprs ctx (expr:exprs) = do
     (s2, ts) <- tInfExprs (apply s1 ctx) exprs
 
     return (s2 `composeSubstitution` s1, (apply s2 t) : ts)
+
+tInfTuple :: TypeCtx -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
+tInfTuple ctx e1 e2 = do
+    (s1, t1) <- tInfExpr ctx e1
+    (s2, t2) <- tInfExpr (apply s1 ctx) e2
+    return (s2 `composeSubstitution` s1, TTuple (apply s2 t1) t2)
 
 tInfUnaryOp :: TypeCtx -> AST.UnaryOperator -> AST.Expression -> TInf (Substitution, Type)
 tInfUnaryOp ctx (AST.UnaryOpNeg, _) e = do
