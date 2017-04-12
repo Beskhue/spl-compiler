@@ -98,6 +98,7 @@ data Scheme = Scheme [String] Type
 class Types a where
     freeTypeVars :: a -> Set.Set String
     apply :: Substitution -> a -> a
+    applyOnlyRename :: Substitution -> a -> a
 
 instance Types Type where
     freeTypeVars (TVar v) = Set.singleton v
@@ -118,14 +119,25 @@ instance Types Type where
     apply s (TFunction arg body) = TFunction (apply s arg) (apply s body)
     apply s t = t
 
+    applyOnlyRename s (TVar v) =
+        case Map.lookup v s of
+            Just (TVar v') -> (TVar v')
+            _ -> TVar v
+    applyOnlyRename s (TList l) = TList $ applyOnlyRename s l
+    applyOnlyRename s (TTuple t1 t2) = TTuple (applyOnlyRename s t1) (applyOnlyRename s t2)
+    applyOnlyRename s (TFunction arg body) = TFunction (applyOnlyRename s arg) (applyOnlyRename s body)
+    applyOnlyRename s t = t
+
 instance Types Scheme where
     freeTypeVars (Scheme vars t) = (freeTypeVars t) `Set.difference` (Set.fromList vars)
     apply s (Scheme vars t) = Scheme vars (apply (foldr Map.delete s vars) t)
+    applyOnlyRename s (Scheme vars t) = Scheme vars (applyOnlyRename (foldr Map.delete s vars) t)
 
 -- |Might be useful to have the class available on lists as well
 instance Types a => Types [a] where
     freeTypeVars l = foldr Set.union Set.empty (map freeTypeVars l)
     apply s = map (apply s)
+    applyOnlyRename s = map (applyOnlyRename s)
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -163,6 +175,7 @@ add (TypeCtx ctx) var scheme = TypeCtx (Map.insert var scheme ctx)
 instance Types TypeCtx where
     freeTypeVars (TypeCtx ctx) = freeTypeVars (Map.elems ctx)
     apply s (TypeCtx ctx) = TypeCtx (Map.map (apply s) ctx)
+    applyOnlyRename s (TypeCtx ctx) = TypeCtx (Map.map (applyOnlyRename s) ctx)
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -417,7 +430,7 @@ tInfFunDecl ctx decl =
                 throwError $ "Could not unify types"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateFunType p t) ++ ".")
-            if apply s' annotatedT == annotatedT
+            if apply s' annotatedT == applyOnlyRename s' annotatedT
                 then return (ast, s, str, t)
                 else throwError $ "Expected type is more general than the inferred type"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
@@ -566,25 +579,31 @@ instance Types AST.Type where
     freeTypeVars t = freeTypeVars $ rTranslateType t
     apply s (t, p) = translateType p $ apply s $ rTranslateType (t, p)
 
+    applyOnlyRename = undefined
+
 instance Types AST.Decl where
     freeTypeVars = undefined
     apply s (AST.DeclV v, p) = (AST.DeclV (apply s v), p)
     apply s (AST.DeclF f, p) = (AST.DeclF (apply s f), p)
+    applyOnlyRename = undefined
 
 instance Types AST.VarDecl where
     freeTypeVars = undefined
     apply s (AST.VarDeclTyped t i e, p) = (AST.VarDeclTyped (apply s t) (apply s i) (apply s e), p)
     apply s (AST.VarDeclUntyped i e, p) = (AST.VarDeclUntyped (apply s i) (apply s e), p)
+    applyOnlyRename = undefined
 
 instance Types AST.FunDecl where
     freeTypeVars = undefined
     apply s (AST.FunDeclTyped i is t ss, p) = (AST.FunDeclTyped (apply s i) (apply s is) (apply s t) (apply s ss), p)
     apply s (AST.FunDeclUntyped i is ss, p) = (AST.FunDeclUntyped (apply s i) (apply s is) (apply s ss), p)
+    applyOnlyRename = undefined
 
 instance Types AST.FunType where
     freeTypeVars = undefined
     apply s (AST.FunType ts t, p) = (AST.FunType (apply s ts) (apply s t), p)
     apply s (AST.FunTypeVoid ts, p) = (AST.FunTypeVoid (apply s ts), p)
+    applyOnlyRename = undefined
 
 instance Types AST.Statement where
     freeTypeVars = undefined
@@ -598,18 +617,22 @@ instance Types AST.Statement where
     apply s (AST.StmtFunCall i es, p) = (AST.StmtFunCall (apply s i) (apply s es), p)
     apply s (AST.StmtReturn e, p) = (AST.StmtReturn (apply s e), p)
     apply _ st = st
+    applyOnlyRename = undefined
 
 instance Types AST.Field where
     freeTypeVars = undefined
     apply _ f = f
+    applyOnlyRename = undefined
 
 instance Types AST.Expression where
     freeTypeVars = undefined
     apply _ e = e
+    applyOnlyRename = undefined
 
 instance Types AST.Identifier where
     freeTypeVars = undefined
     apply _ i = i
+    applyOnlyRename = undefined
 
 ------------------------------------------------------------------------------------------------------------------------
 
