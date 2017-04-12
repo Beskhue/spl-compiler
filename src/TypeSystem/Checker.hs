@@ -394,7 +394,12 @@ tInfStatements ctx (statement:statements) = do
         False -> return (statement' : statements', s1 `composeSubstitution` s2, TVoid)
 
 tInfStatement :: TypeCtx -> AST.Statement -> TInf (AST.Statement, Substitution, String, Type, Bool)
-tInfStatement = undefined
+tInfStatement ctx (AST.StmtVarDecl decl, p) = do
+    (decl', s, varName, t) <- tInfVarDecl ctx decl
+    return ((AST.StmtVarDecl decl', p), s, varName, t, False)
+tInfStatement ctx (AST.StmtReturn expr, p) = do
+    (s, t) <- tInfExpr ctx expr
+    return ((AST.StmtReturn expr, p), s, "", t, False)
 
 ------------------------------------------------------------------------------------------------------------------------
 
