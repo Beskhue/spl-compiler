@@ -266,10 +266,22 @@ tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
 ------------------------------------------------------------------------------------------------------------------------
 
 translateType :: Pos.Pos -> Type -> AST.Type
-translateType p TBool = (AST.TypeBool, p)
-translateType p TInt = (AST.TypeInt, p)
-translateType p TChar = (AST.TypeChar, p)
+translateType p (TVar str)         = (AST.TypeIdentifier (AST.Identifier str, p), p)
+translateType p TBool              = (AST.TypeBool, p)
+translateType p TInt               = (AST.TypeInt, p)
+translateType p TChar              = (AST.TypeChar, p)
+translateType p (TList t)          = (AST.TypeList $ translateType p t, p)
+translateType p (TTuple t1 t2)     = (AST.TypeTuple (translateType p t1) (translateType p t2), p)
+-- translateType p TTunction arg body = (AST.Type ...)
 
+translateType' :: AST.Type -> Type
+translateType' (AST.TypeIdentifier id, _) = TVar $ idName id
+translateType' (AST.TypeBool, _)          = TBool
+translateType' (AST.TypeInt, _)           = TInt
+translateType' (AST.TypeChar, _)          = TChar
+translateType' (AST.TypeList t, _)        = TList $ translateType' t
+translateType' (AST.TypeTuple t1 t2, _)   = TTuple (translateType' t1) (translateType' t2)
+-- translateType' AST.TypeFunction arg body = TFunction (translateType' arg) (translateType' body)
 
 ------------------------------------------------------------------------------------------------------------------------
 
