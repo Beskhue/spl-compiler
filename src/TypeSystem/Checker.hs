@@ -350,6 +350,51 @@ instance Types AST.Type where
     freeTypeVars t = freeTypeVars $ rTranslateType t
     apply s (t, p) = translateType p $ apply s $ rTranslateType (t, p)
 
+instance Types AST.Decl where
+    freeTypeVars = undefined
+    apply s (AST.DeclV v, p) = (AST.DeclV (apply s v), p)
+    apply s (AST.DeclF f, p) = (AST.DeclF (apply s f), p)
+
+instance Types AST.VarDecl where
+    freeTypeVars = undefined
+    apply s (AST.VarDeclTyped t i e, p) = (AST.VarDeclTyped (apply s t) (apply s i) (apply s e), p)
+    apply s (AST.VarDeclUntyped i e, p) = (AST.VarDeclUntyped (apply s i) (apply s e), p)
+
+instance Types AST.FunDecl where
+    freeTypeVars = undefined
+    apply s (AST.FunDeclTyped i is t ss, p) = (AST.FunDeclTyped (apply s i) (apply s is) (apply s t) (apply s ss), p)
+    apply s (AST.FunDeclUntyped i is ss, p) = (AST.FunDeclUntyped (apply s i) (apply s is) (apply s ss), p)
+
+instance Types AST.FunType where
+    freeTypeVars = undefined
+    apply s (AST.FunType ts t, p) = (AST.FunType (apply s ts) (apply s t), p)
+    apply s (AST.FunTypeVoid ts, p) = (AST.FunTypeVoid (apply s ts), p)
+
+instance Types AST.Statement where
+    freeTypeVars = undefined
+    apply s (AST.StmtVarDecl v, p) = (AST.StmtVarDecl (apply s v), p)
+    apply s (AST.StmtIf e st, p) = (AST.StmtIf (apply s e) (apply s st), p)
+    apply s (AST.StmtIfElse e st1 st2, p) = (AST.StmtIfElse (apply s e) (apply s st1) (apply s st2), p)
+    apply s (AST.StmtWhile e st, p) = (AST.StmtWhile (apply s e) (apply s st), p)
+    apply s (AST.StmtBlock sts, p) = (AST.StmtBlock (apply s sts), p)
+    apply s (AST.StmtAssignment i e, p) = (AST.StmtAssignment (apply s i) (apply s e), p)
+    apply s (AST.StmtAssignmentField i f e, p) = (AST.StmtAssignmentField (apply s i) (apply s f) (apply s e), p)
+    apply s (AST.StmtFunCall i es, p) = (AST.StmtFunCall (apply s i) (apply s es), p)
+    apply s (AST.StmtReturn e, p) = (AST.StmtReturn (apply s e), p)
+    apply _ st = st
+
+instance Types AST.Field where
+    freeTypeVars = undefined
+    apply _ f = f
+
+instance Types AST.Expression where
+    freeTypeVars = undefined
+    apply _ e = e
+
+instance Types AST.Identifier where
+    freeTypeVars = undefined
+    apply _ i = i
+
 ------------------------------------------------------------------------------------------------------------------------
 
 
