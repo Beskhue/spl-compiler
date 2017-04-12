@@ -1,0 +1,4 @@
+var d = a == c;
+var a = 1;
+var c = b;
+var b = a + 1;

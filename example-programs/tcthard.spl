@@ -1,0 +1,6 @@
+last (a, b) {
+    var c = a : b : [];
+    var d = 1 : c;
+    
+    return d;
+}

@@ -1,0 +1,5 @@
+eq (x, y) {
+    if (x)
+        return y;
+    return True;
+}
