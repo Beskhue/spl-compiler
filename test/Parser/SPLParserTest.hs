@@ -47,6 +47,8 @@ spec_SPLParser =
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
             rawSPL <- Lib.readUTF8File "example-programs/scopes.spl"
             parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
+            rawSPL <- Lib.readUTF8File "example-programs/tctstatements.spl"
+            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
             -- Todo: fix UTF8 output of prettyPrint
             --rawSPL <- Lib.readUTF8File "example-programs/unicode.spl"
             --parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
