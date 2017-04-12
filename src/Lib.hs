@@ -29,7 +29,7 @@ compile = do
             Left e -> putStrLn $ show e
             Right ast -> case Checker.check ast of
                 Left e -> putStrLn $ show e
-                Right b -> putStrLn $ show b
+                Right b -> putStrLn $ AST.prettyPrint b ++ "\n\n" ++ show b
 
 prettyPrint :: IO()
 prettyPrint = do
