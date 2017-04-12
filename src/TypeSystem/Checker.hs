@@ -151,7 +151,8 @@ remove :: TypeCtx -> String -> TypeCtx
 remove (TypeCtx ctx) var = TypeCtx (Map.delete var ctx)
 
 add :: TypeCtx -> String -> Scheme -> TypeCtx
-add (TypeCtx ctx) var scheme = TypeCtx (Map.insert var scheme ctx)
+add (TypeCtx ctx) var scheme = TypeCtx (ctx `Map.union` (Map.singleton var scheme))
+--add (TypeCtx ctx) var scheme = TypeCtx (Map.insert var scheme ctx)
 
 instance Types TypeCtx where
     freeTypeVars (TypeCtx ctx) = freeTypeVars (Map.elems ctx)
@@ -361,11 +362,11 @@ tInfFunDecl ctx decl =
             scopedCtx <- addArgsToCtx (idName identifier ++ "_") ctx args -- Create the function's scoped context
             (stmts', s, t) <- tInfStatements scopedCtx stmts
 
-            throwError $ show (apply s scopedCtx)
-            -- throwError $ show s
-            throwError $ show t
+            argsTypes <- getArgsTypes (apply s scopedCtx) args
+            let funType = TFunction argsTypes t
+            let funTypeAST = translateFunType p funType
 
-            return ((AST.FunDeclTyped identifier args undefined stmts', p), s, idName identifier, t) -- todo calculate function type based on stmts return type and argument types
+            return ((AST.FunDeclTyped identifier args funTypeAST stmts', p), s, idName identifier, funType) -- todo calculate function type based on stmts return type and argument types
             where
                 addArgsToCtx :: String -> TypeCtx -> [AST.Identifier] -> TInf TypeCtx
                 addArgsToCtx prefix ctx [] = return ctx
@@ -373,6 +374,13 @@ tInfFunDecl ctx decl =
                     typeVar <- newTypeVar (prefix ++ "arg")
                     ctx' <- addArgsToCtx prefix ctx args
                     return $ add ctx' (idName arg) (Scheme [] typeVar)
+
+                getArgsTypes :: TypeCtx -> [AST.Identifier] -> TInf [Type]
+                getArgsTypes _ [] = return []
+                getArgsTypes ctx (arg:args) = do
+                    t <- tInfVarName ctx $ idName arg
+                    ts <- getArgsTypes ctx args
+                    return $ t:ts
 
 
 tInfStatements :: TypeCtx -> [AST.Statement] -> TInf ([AST.Statement], Substitution, Type)
@@ -383,20 +391,22 @@ tInfStatements ctx (statement:statements) = do
     -- Update local context if the statement declared a new variable
     let ctx' = (if varName == ""
                 then apply s1 ctx
-                else add ctx varName (generalize (apply s1 ctx) t1))
+                else add (apply s1 ctx) varName (Scheme [] t1))
 
     (statements', s2, t2) <- tInfStatements ctx' statements
+
+    let s = s2 `composeSubstitution` s1
 
     case returnsValue of
         True -> (
             case t2 of
-                TVoid -> return (statement' : statements', s1 `composeSubstitution` s2, apply s2 t1)
+                TVoid -> return (apply s $ statement' : statements', s, apply s t1)
                 _ -> do
                     s <- mgu (apply s2 t1) t2
-                    return (statement' : statements', s1 `composeSubstitution` s2, apply s t1)
+                    return (apply s $ statement' : statements', s, apply s t1)
             )
 
-        False -> return (statement' : statements', s1 `composeSubstitution` s2, t2)
+        False -> return (apply s $ statement' : statements', s, apply s t2)
 
 tInfStatement :: TypeCtx -> AST.Statement -> TInf (AST.Statement, Substitution, String, Type, Bool)
 tInfStatement ctx (AST.StmtVarDecl decl, p) = do
