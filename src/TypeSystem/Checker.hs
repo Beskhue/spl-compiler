@@ -258,5 +258,10 @@ tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
         TInt -> return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s TInt)
         _ -> throwError "+ expects type to be Int"
 
+------------------------------------------------------------------------------------------------------------------------
+
+-- |Type checks an SPL program, and returns a new AST that is fully typed
+tCheckSPL :: AST.SPL -> Either String AST.SPL
+tCheckSPL = undefined
 
 ------------------------------------------------------------------------------------------------------------------------
