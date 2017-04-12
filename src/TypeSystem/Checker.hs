@@ -1,3 +1,5 @@
+{-# OPTIONS_GHC -XFlexibleInstances #-}
+
 {-|
 Module: TypeSystem.Checker
 Description: A type checker for SPL
@@ -343,6 +345,10 @@ rTranslateType (AST.TypeTuple t1 t2, _)   = TTuple (rTranslateType t1) (rTransla
 rTranslateFunType :: AST.FunType -> Type
 rTranslateFunType (AST.FunTypeVoid args, _)  = TFunction (map rTranslateType args) TVoid
 rTranslateFunType (AST.FunType args body, _) = TFunction (map rTranslateType args) (rTranslateType body)
+
+instance Types AST.Type where
+    freeTypeVars t = freeTypeVars $ rTranslateType t
+    apply s (t, p) = translateType p $ apply s $ rTranslateType (t, p)
 
 ------------------------------------------------------------------------------------------------------------------------
 
