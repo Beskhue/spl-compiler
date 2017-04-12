@@ -441,6 +441,11 @@ tInfStatement :: TypeCtx -> AST.Statement -> TInf (AST.Statement, Substitution, 
 tInfStatement ctx (AST.StmtVarDecl decl, p) = do
     (decl', s, varName, t) <- tInfVarDecl ctx decl
     return ((AST.StmtVarDecl decl', p), s, varName, t, False)
+tInfStatement ctx (AST.StmtIf expr st, p) = do
+    (s1, t1) <- tInfExpr ctx expr
+    s <- mgu t1 TBool
+    (st', s2, varName, t2, returnsValue) <- tInfStatement (apply s ctx) st
+    return ((AST.StmtIf expr st', p), s2 `composeSubstitution` s `composeSubstitution` s1, varName, t2, returnsValue)
 tInfStatement ctx (AST.StmtReturn expr, p) = do
     (s, t) <- tInfExpr ctx expr
     return ((AST.StmtReturn expr, p), s, "", t, True)
