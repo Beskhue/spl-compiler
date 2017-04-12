@@ -279,6 +279,28 @@ tInfConst _ (AST.ConstEmptyList, _) = do
 -- |Perform type inference on an AST expression
 tInfExpr :: TypeCtx -> AST.Expression -> TInf (Substitution, Type)
 tInfExpr ctx (AST.ExprIdentifier id, _) = tInfId ctx id
+tInfExpr ctx (AST.ExprIdentifierField id fields, _) = do
+    (s, t) <- tInfId ctx id
+    (s', t') <- tTraverseFields ctx t fields
+    return (s' `composeSubstitution` s, t')
+    where
+        tTraverseFields :: TypeCtx -> Type -> [AST.Field] -> TInf (Substitution, Type)
+        tTraverseFields _ t [] = return (nullSubstitution, t)
+        tTraverseFields ctx t (field:fields) = do
+            case field of
+                (AST.FieldHd, _) -> do
+                    tVar <- newTypeVar "fld"
+                    s <- mgu t (TList tVar)
+                    (s', t') <- tTraverseFields (apply s ctx) (apply s tVar) fields
+                    return (s' `composeSubstitution` s, t')
+                (AST.FieldTl, _) -> do
+                    tVar <- newTypeVar "fld"
+                    s <- mgu t (TList tVar)
+                    (s', t') <- tTraverseFields (apply s ctx) (apply s (TList tVar)) fields
+                    return (s' `composeSubstitution` s, t')
+                (AST.FieldFst, _) -> undefined
+                (AST.FieldSnd, _) -> undefined
+
 tInfExpr ctx (AST.ExprFunCall id args, _) = do
     tReturn <- newTypeVar (idName id ++ "_ret")
     (s1, t1) <- tInfId ctx id
