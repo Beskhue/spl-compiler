@@ -486,7 +486,7 @@ tInfVarDecl ctx decl =
                     ++ ". Expected type: " ++ AST.prettyPrint (translateType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateType p t) ++ ".")
             if apply s' annotatedT == applyOnlyRename s' annotatedT
-                then return (ast, s, str, t)
+                then return (apply s' ast, s' `composeSubstitution` s, str, apply s' t)
                 else throwError $ "Expected type is more general than the inferred type"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateType p t) ++ "."
@@ -509,7 +509,7 @@ tInfFunDecl ctx decl =
                     ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateFunType p t) ++ ".")
             if apply s' annotatedT == applyOnlyRename s' annotatedT
-                then return (ast, s, str, t)
+                then return (apply s' ast, s' `composeSubstitution` s, str, apply s' t)
                 else throwError $ "Expected type is more general than the inferred type"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateFunType p t) ++ "."
