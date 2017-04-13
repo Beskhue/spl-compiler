@@ -113,7 +113,7 @@ instance Types Type where
 
     applyOnlyRename s (TVar v) =
         case Map.lookup v s of
-            Just (TVar v') -> (TVar v')
+            Just (TVar v') -> TVar v'
             _ -> TVar v
     applyOnlyRename s (TList l) = TList $ applyOnlyRename s l
     applyOnlyRename s (TTuple t1 t2) = TTuple (applyOnlyRename s t1) (applyOnlyRename s t2)
@@ -156,7 +156,7 @@ emptyMap :: Map.Map String Scheme
 emptyMap = Map.empty
 
 emptyCtx :: TypeCtx
-emptyCtx = TypeCtx (emptyMap)
+emptyCtx = TypeCtx emptyMap
 
 emptyScopedCtx :: ScopedTypeCtx
 emptyScopedCtx = Stack.stackNew
@@ -269,9 +269,7 @@ mgu (TTuple t1 t2) (TTuple t1' t2') = do
     s1 <- mgu t1 t1'
     s2 <- mgu (apply s1 t2) (apply s1 t2')
     return $ s1 `composeSubstitution` s2
-mgu (TFunction [] body) (TFunction [] body') = do
-    s1 <- mgu body body'
-    return s1
+mgu (TFunction [] body) (TFunction [] body') = mgu body body'
 mgu (TFunction (arg:args) body) (TFunction (arg':args') body') = do
     s1 <- mgu arg arg'
     s2 <- mgu (apply s1 (TFunction args body)) (apply s1 (TFunction args' body'))
@@ -330,7 +328,7 @@ tInfExpr ctx (AST.ExprIdentifierField id fields, _) = do
     where
         tTraverseFields :: ScopedTypeCtx -> Type -> [AST.Field] -> TInf (Substitution, Type)
         tTraverseFields _ t [] = return (nullSubstitution, t)
-        tTraverseFields ctx t (field:fields) = do
+        tTraverseFields ctx t (field:fields) =
             case field of
                 (AST.FieldHd, _) -> do
                     tVar <- newTypeVar "fld"
@@ -363,7 +361,7 @@ tInfExprs ctx (expr:exprs) = do
     (s1, t) <- tInfExpr ctx expr
     (s2, ts) <- tInfExprs (apply s1 ctx) exprs
 
-    return (s2 `composeSubstitution` s1, (apply s2 t) : ts)
+    return (s2 `composeSubstitution` s1, apply s2 t : ts)
 
 tInfTuple :: ScopedTypeCtx -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
 tInfTuple ctx e1 e2 = do
@@ -626,7 +624,7 @@ tInfStatement ctx (AST.StmtAssignment identifier expr, p) = do
 
     let t' = translateType p (apply s t1)
     return ((AST.StmtAssignment identifier expr, p), s `composeSubstitution` s1, "", apply s t1, False)
-tInfStatement ctx (AST.StmtAssignmentField identifier fields expr, p) = throwError $ "Assigning to fields is not supported"
+tInfStatement ctx (AST.StmtAssignmentField identifier fields expr, p) = throwError "Assigning to fields is not supported"
 tInfStatement ctx (AST.StmtFunCall identifier expressions, p) = do
     (s, t) <- tInfExpr ctx (AST.ExprFunCall identifier expressions, p)
     return ((AST.StmtFunCall identifier expressions, p), s, "", TVoid, False)
