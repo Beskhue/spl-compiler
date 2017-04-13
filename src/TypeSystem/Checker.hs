@@ -496,7 +496,7 @@ tInfSPL decls = do
 tInfSPLGraph :: AST.SPL -> [(AST.Decl, String, [String])]
 tInfSPLGraph decls =
     let globalVars = map declIdentifier decls in
-        map (\decl -> (decl, declIdentifier decl, dependencies globalVars decl)) decls
+        map (\decl -> (decl, declIdentifier decl, snd $ dependencies globalVars decl)) decls
 
 tInfDecl :: AST.Decl -> TInf (AST.Decl, Substitution, String, Type)
 tInfDecl (AST.DeclV decl, p) = do
@@ -693,10 +693,32 @@ instance DeclIdentifier AST.FunDecl where
     declIdentifier (AST.FunDeclUntyped i _ _, _) = idName i
 
 class Dependencies a where
-    dependencies :: [String] -> a -> [String]
+    dependencies :: [String] -> a -> ([String], [String]) -- tuple of global defs remaining and dependencies
+
+instance Dependencies a => Dependencies [a] where
+    dependencies globalDefs [] = (globalDefs, [])
+    dependencies globalDefs (a:aa) =
+        let (globalDefs', deps) = dependencies globalDefs a in
+            let (globalDefs'', deps') = dependencies globalDefs' aa in
+                (globalDefs'', deps ++ deps')
 
 instance Dependencies AST.Decl where
-    dependencies globalDefs decl = globalDefs
+    dependencies globalDefs (AST.DeclV decl, _) = dependencies globalDefs decl
+    dependencies globalDefs (AST.DeclF decl, _) = dependencies globalDefs decl
+
+instance Dependencies AST.VarDecl where
+    dependencies globalDefs (AST.VarDeclTyped _ i e, _) = dependencies [g | g <- globalDefs, not (g == idName i)] e
+    dependencies globalDefs (AST.VarDeclUntyped i e, _) = dependencies [g | g <- globalDefs, not (g == idName i)] e
+
+instance Dependencies AST.FunDecl where
+    dependencies globalDefs (AST.FunDeclTyped i is _ ss, _) = dependencies [g | g <- globalDefs, not (elem g (idName i : map idName is))] ss
+    dependencies globalDefs (AST.FunDeclUntyped i is ss, _) = dependencies [g | g <- globalDefs, not (elem g (idName i : map idName is))] ss
+
+instance Dependencies AST.Statement where
+    dependencies globalDefs _ = (globalDefs, globalDefs)
+
+instance Dependencies AST.Expression where
+    dependencies globalDefs _ = (globalDefs, globalDefs)
 
 ------------------------------------------------------------------------------------------------------------------------
 
