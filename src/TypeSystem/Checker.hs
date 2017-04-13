@@ -351,9 +351,10 @@ tInfExpr ctx (AST.ExprFunCall id args, _) = do
     (s2, ts) <- tInfExprs (apply s1 ctx) args
     s <- mgu (apply s2 t1) (TFunction ts tReturn)
 
-    if length args == 0
-        then return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s tReturn)
-        else return (s2 `composeSubstitution` s1, apply s tReturn)
+    return (s2 `composeSubstitution` s1, apply s tReturn)
+    --if length args == 0
+        --then return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s tReturn)
+        --else return (s2 `composeSubstitution` s1, apply s tReturn)
 tInfExpr ctx (AST.ExprConstant const, _) = tInfConst ctx const
 tInfExpr ctx (AST.ExprTuple e1 e2, _) = tInfTuple ctx e1 e2
 tInfExpr ctx (AST.ExprUnaryOp op e, _) = tInfUnaryOp ctx op e
