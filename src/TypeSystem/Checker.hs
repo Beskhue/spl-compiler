@@ -460,14 +460,14 @@ tInfSPL ctx decls = do
             s2 <- mgu t1' t1
 
             -- Get the next declarations, using the unified type scheme
-            (decls', s3, t2) <- tInfSPL' (apply s2 ctx) decls
+            (decls', s3, t2) <- tInfSPL' (apply (s2 `composeSubstitution` s1) ctx) decls
 
             -- Infer type for this declaration again, using the "back-flown" information from the next declarations
-            (declPost, s1Post, varNamePost, t1Post) <- tInfDecl (apply s3 ctx) decl
+            --(declPost, s1Post, varNamePost, t1Post) <- tInfDecl (apply s3 ctx) decl
 
             return (
-                        declPost : decls',
-                        s3 `composeSubstitution` s2,
+                        apply (s3 `composeSubstitution` s2 ) decl' : decls',
+                        s3 `composeSubstitution` s2 `composeSubstitution` s1,
                         t2
                     )
 
