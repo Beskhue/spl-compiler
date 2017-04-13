@@ -571,7 +571,12 @@ tInfStatements ctx (statement:statements) = do
 tInfStatement :: ScopedTypeCtx -> AST.Statement -> TInf (AST.Statement, Substitution, String, Type, Bool)
 tInfStatement ctx (AST.StmtVarDecl decl, p) = do
     (decl', s, varName, t) <- tInfVarDecl ctx decl
-    return ((AST.StmtVarDecl decl', p), s, varName, t, False)
+    case Stack.stackPeek ctx of
+        Just (TypeCtx ctx') ->
+            if Map.member varName ctx'
+                then throwError $ "Variable multiply defined in scope: " ++ varName ++ show p
+                else return ((AST.StmtVarDecl decl', p), s, varName, t, False)
+
 tInfStatement ctx (AST.StmtIf expr st, p) = do
     (s1, t1) <- tInfExpr ctx expr
     s <- mgu t1 TBool
