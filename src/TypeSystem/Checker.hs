@@ -349,8 +349,11 @@ tInfExpr ctx (AST.ExprFunCall id args, _) = do
     tReturn <- newTypeVar (idName id ++ "_ret")
     (s1, t1) <- tInfId ctx id
     (s2, ts) <- tInfExprs (apply s1 ctx) args
-    s <- mgu t1 (TFunction ts tReturn)
-    return (s2 `composeSubstitution` s1, apply s tReturn)
+    s <- mgu (apply s2 t1) (TFunction ts tReturn)
+
+    if length args == 0
+        then return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s tReturn)
+        else return (s2 `composeSubstitution` s1, apply s tReturn)
 tInfExpr ctx (AST.ExprConstant const, _) = tInfConst ctx const
 tInfExpr ctx (AST.ExprTuple e1 e2, _) = tInfTuple ctx e1 e2
 tInfExpr ctx (AST.ExprUnaryOp op e, _) = tInfUnaryOp ctx op e
@@ -563,14 +566,14 @@ tInfStatements ctx (statement:statements) = do
     if returnsValue
         then
             case t2 of
-                TVoid -> return (statement' : statements', s2 `composeSubstitution` s1, apply s2 t1)
+                TVoid -> return (apply s2 statement' : statements', s2 `composeSubstitution` s1, apply s2 t1)
                 _ -> do
                     s <- mgu (apply s2 t1) t2
                     return (
                         apply (s `composeSubstitution` s2) statement' : statements',
                         s `composeSubstitution` s2 `composeSubstitution` s1,
                         apply s t2)
-        else return (statement' : statements', s2 `composeSubstitution` s1, t2)
+        else return (apply s2 statement' : statements', s2 `composeSubstitution` s1, t2)
 
 tInfStatement :: ScopedTypeCtx -> AST.Statement -> TInf (AST.Statement, Substitution, String, Type, Bool)
 tInfStatement ctx (AST.StmtVarDecl decl, p) = do
