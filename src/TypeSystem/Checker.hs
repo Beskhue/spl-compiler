@@ -23,6 +23,7 @@ import qualified Debug.Trace as Trace
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Stack as Stack
+import qualified Data.Graph as Graph
 
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -450,6 +451,8 @@ tInfBinaryOp (AST.BinaryOpMod, p) e1 e2 = tInfBinaryOp (AST.BinaryOpPlus, p) e1 
 tInfSPL :: AST.SPL -> TInf (AST.SPL, Substitution, Type)
 tInfSPL decls = do
     ctx <- ask
+    let graph = tInfSPLGraph decls
+    throwError $ show graph
     let initCtx = Stack.stackPush ctx emptyCtx -- Create top scope
     ctx' <- addGlobalsToCtx initCtx decls -- Add globals to to scope
     local (\ _ -> ctx') (tInfSPL' decls)
@@ -489,6 +492,11 @@ tInfSPL decls = do
                         s3 `composeSubstitution` s2 `composeSubstitution` s1,
                         t2
                     )
+
+tInfSPLGraph :: AST.SPL -> [(AST.Decl, String, [String])]
+tInfSPLGraph decls =
+    let globalVars = map declIdentifier decls in
+        map (\decl -> (decl, declIdentifier decl, dependencies globalVars decl)) decls
 
 tInfDecl :: AST.Decl -> TInf (AST.Decl, Substitution, String, Type)
 tInfDecl (AST.DeclV decl, p) = do
@@ -666,6 +674,29 @@ tInfStatement (AST.StmtReturn expr, p) = do
     (s, t) <- tInfExpr expr
     return ((AST.StmtReturn expr, p), s, "", t, True)
 tInfStatement (AST.StmtReturnVoid, p) = return ((AST.StmtReturnVoid, p), nullSubstitution, "", TVoid, True)
+
+------------------------------------------------------------------------------------------------------------------------
+
+class DeclIdentifier a where
+    declIdentifier :: a -> String
+
+instance DeclIdentifier AST.Decl where
+    declIdentifier (AST.DeclV decl, _) = declIdentifier decl
+    declIdentifier (AST.DeclF decl, _) = declIdentifier decl
+
+instance DeclIdentifier AST.VarDecl where
+    declIdentifier (AST.VarDeclTyped _ i _, _) = idName i
+    declIdentifier (AST.VarDeclUntyped i _, _) = idName i
+
+instance DeclIdentifier AST.FunDecl where
+    declIdentifier (AST.FunDeclTyped i _ _ _, _) = idName i
+    declIdentifier (AST.FunDeclUntyped i _ _, _) = idName i
+
+class Dependencies a where
+    dependencies :: [String] -> a -> [String]
+
+instance Dependencies AST.Decl where
+    dependencies globalDefs decl = globalDefs
 
 ------------------------------------------------------------------------------------------------------------------------
 
