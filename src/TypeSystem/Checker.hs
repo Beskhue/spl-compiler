@@ -516,7 +516,7 @@ tInfFunDecl ctx decl =
             let funType = TFunction argsTypes t
             let funTypeAST = translateFunType p funType
 
-            return ((AST.FunDeclTyped identifier args funTypeAST stmts', p), s, idName identifier, funType) -- todo calculate function type based on stmts return type and argument types
+            return ((AST.FunDeclTyped identifier args funTypeAST stmts', p), s, idName identifier, funType)
             where
                 addArgsToCtx :: String -> ScopedTypeCtx -> [AST.Identifier] -> TInf ScopedTypeCtx
                 addArgsToCtx prefix ctx [] = return ctx
