@@ -483,7 +483,7 @@ tInfVarDecl ctx decl =
         (AST.VarDeclTyped annotatedType identifier expr, p) ->
             let annotatedT = rTranslateType annotatedType in do
             (ast, s, str, t) <- tInfVarDecl' p ctx identifier expr
-            s' <- (mgu annotatedT t) `catchError` (\_ ->
+            s' <- mgu annotatedT t `catchError` (\_ ->
                 throwError $ "Could not unify types"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateType p t) ++ ".")
@@ -506,7 +506,7 @@ tInfFunDecl ctx decl =
         (AST.FunDeclTyped identifier args annotatedType stmts, p) ->
             let annotatedT = rTranslateFunType annotatedType in do
             (ast, s, str, t) <- tInfFunDecl' p ctx identifier args stmts
-            s' <- (mgu annotatedT t) `catchError` (\_ ->
+            s' <- mgu annotatedT t `catchError` (\_ ->
                 throwError $ "Could not unify types"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateFunType p t) ++ ".")
@@ -552,8 +552,9 @@ tInfStatements ctx (statement:statements) = do
 
     -- Update local context if the statement declared a new variable
     let ctx' = (if varName == ""
-                then apply s1 ctx
-                else add (apply s1 ctx) varName (Scheme [] t1))
+                    then apply s1 ctx
+                    else add (apply s1 ctx) varName (Scheme [] t1)
+                )
 
     (statements', s2, t2) <- tInfStatements ctx' statements
 
