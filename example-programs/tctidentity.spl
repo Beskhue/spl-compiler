@@ -1,0 +1,1 @@
+foo(x) { return x; } var y = foo(5); var z = foo(True);

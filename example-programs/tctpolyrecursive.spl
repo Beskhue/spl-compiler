@@ -1,0 +1,7 @@
+id (x) {
+    return x;
+}
+
+f () {
+    var a = id(5);
+}

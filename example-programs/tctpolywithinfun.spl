@@ -2,9 +2,9 @@ eq (x, y) {
     return x == y;
 }
 
-check_err () {
+check () {
     var a = eq(1, 2);
-    return eq('a', 'b');
+    var b = eq('a', 'b');
 }
 
 check1 () {

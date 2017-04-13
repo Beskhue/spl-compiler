@@ -1,0 +1,3 @@
+var g = test();
+test () { return g; }
+test2 (b) { var a = test() + b; }

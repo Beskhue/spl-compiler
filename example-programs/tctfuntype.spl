@@ -1,0 +1,16 @@
+f (x)
+{
+    return g(x);
+}
+
+g (x)
+{
+    return f(x);
+}
+
+var b = f(1);
+
+test2 (b)
+{
+    var a = 1;
+}

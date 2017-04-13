@@ -1,11 +1,14 @@
-is_positive (n) :: Int -> Bool {
-    var b = False;
-    
+var n = True;
+valid (n) {
+    var a = n + 1;
     {
-        var a = n + 0;
-        b = a >= 0;
+        var a = True;
     }
-    
-    Bool a = b;
-    return a;
 }
+
+/*
+invalid (n) {
+    var a = n + 1;
+    var a = True;
+}
+*/
