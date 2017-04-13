@@ -64,8 +64,8 @@ spec_Checker = do
             parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
             rawSPL <- Lib.readUTF8File "example-programs/tctpoly.spl"
             parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            --rawSPL <- Lib.readUTF8File "example-programs/tctpolywithinfun.spl"
-            --parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
+            rawSPL <- Lib.readUTF8File "example-programs/tctpolywithinfun.spl"
+            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
             rawSPL <- Lib.readUTF8File "example-programs/tctstatements.spl"
             parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
             rawSPL <- Lib.readUTF8File "example-programs/tctpolyreturn.spl"
