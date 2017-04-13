@@ -480,7 +480,18 @@ tInfDecl ctx (AST.DeclF decl, p) = do
 tInfVarDecl :: ScopedTypeCtx -> AST.VarDecl -> TInf (AST.VarDecl, Substitution, String, Type)
 tInfVarDecl ctx decl =
     case decl of
-        (AST.VarDeclTyped _ identifier expr, p) -> tInfVarDecl' p ctx identifier expr -- todo: check annotation (probably by checking whether mgu on translated type and inferred type succeeds)
+        (AST.VarDeclTyped annotatedType identifier expr, p) ->
+            let annotatedT = rTranslateType annotatedType in do
+            (ast, s, str, t) <- tInfVarDecl' p ctx identifier expr
+            s' <- (mgu annotatedT t) `catchError` (\_ ->
+                throwError $ "Could not unify types"
+                    ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
+                    ++ ". Inferred type: " ++ AST.prettyPrint (translateFunType p t) ++ ".")
+            if apply s' annotatedT == applyOnlyRename s' annotatedT
+                then return (ast, s, str, t)
+                else throwError $ "Expected type is more general than the inferred type"
+                    ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
+                    ++ ". Inferred type: " ++ AST.prettyPrint (translateFunType p t) ++ "."
         (AST.VarDeclUntyped identifier expr, p) -> tInfVarDecl' p ctx identifier expr
     where
         tInfVarDecl' :: Pos.Pos -> ScopedTypeCtx -> AST.Identifier -> AST.Expression -> TInf (AST.VarDecl, Substitution, String, Type)
