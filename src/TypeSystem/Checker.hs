@@ -8,7 +8,7 @@ License: MIT
 Maintainer: thomas@kepow.org
 Stability: experimental
 
-A type checker based on Algorithm W.
+A type checker based on Algorithm M.
 
 See more here: http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.65.7733&rep=rep1&type=pdf (last retrieved
 10 April 2017).
@@ -39,7 +39,7 @@ check spl =
         Left err -> Left err
         Right (spl, _, _) -> Right spl
     where
-        (res, _) = runTInf $ tInfSPL emptyScopedCtx spl
+        (res, _) = runTInf $ tInfSPL spl
 
 checkDet :: AST.SPL -> AST.SPL
 checkDet spl =
@@ -47,9 +47,9 @@ checkDet spl =
         Left err -> Trace.trace (show err) undefined
         Right spl -> spl
 
-typeInferenceDet :: (ScopedTypeCtx -> a -> TInf (Substitution, Type)) -> ScopedTypeCtx -> a -> (Substitution, Type)
-typeInferenceDet tInf' ctx e =
-    case typeInference tInf' ctx e of
+typeInferenceDet :: (a -> TInf (Substitution, Type)) -> a -> (Substitution, Type)
+typeInferenceDet tInf' e =
+    case typeInference tInf' e of
         Left err -> Trace.trace (show err) undefined
         Right t -> t
 
@@ -59,12 +59,12 @@ onlyType res =
         Left err -> Left err
         Right (_, t) -> Right t
 
-typeInference :: (ScopedTypeCtx -> a -> TInf (Substitution, Type)) -> ScopedTypeCtx -> a -> Either String (Substitution, Type)
-typeInference tInf' ctx e = res
+typeInference :: (a -> TInf (Substitution, Type)) -> a -> Either String (Substitution, Type)
+typeInference tInf' e = res
     where
-        (res, _) = runTInf $ tInf' ctx e
+        (res, _) = runTInf $ tInf' e
 
-typeInferenceExpr :: ScopedTypeCtx -> AST.Expression -> Either String (Substitution, Type)
+typeInferenceExpr :: AST.Expression -> Either String (Substitution, Type)
 typeInferenceExpr = typeInference tInfExpr
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -213,16 +213,12 @@ generalize ctx t =
 
 ------------------------------------------------------------------------------------------------------------------------
 
--- |The type inference context (shared in TInf using ReaderT)
-data TInfCtx = TInfCtx {}
-
 -- |The type inference state consists of the fresh type name generator state and the current type substitution
 data TInfState = TInfState { tInfSupply :: Int,
-                             tInfSubst :: Substitution}
+                             tInfSubstitution :: Substitution}
                  deriving (Show)
 
--- type TInf a = ExceptT String (ReaderT TInfCtx (StateT TInfState IO)) a
-type TInf a = ExceptT String (ReaderT TInfCtx (State TInfState)) a
+type TInf a = ExceptT String (ReaderT ScopedTypeCtx (State TInfState)) a
 
 -- |The type inference runner. Results in a tuple of either an error and the type inference result, and the final type
 -- inference state. The type inference result will generally be a tuple of a substitution (the type constraints) and the
@@ -230,9 +226,9 @@ type TInf a = ExceptT String (ReaderT TInfCtx (State TInfState)) a
 runTInf :: TInf a -> (Either String a, TInfState)
 runTInf t = runState (runReaderT (runExceptT t) initTInfCtx) initTInfState
     where
-        initTInfCtx = TInfCtx{}
+        initTInfCtx = emptyScopedCtx
         initTInfState = TInfState { tInfSupply = 0,
-                                    tInfSubst = Map.empty}
+                                    tInfSubstitution = Map.empty}
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -257,7 +253,11 @@ varBind :: String -> Type -> TInf Substitution
 varBind u t
     | t == TVar u                   = return nullSubstitution
     | u `Set.member` freeTypeVars t = throwError $ "occurs check fails: " ++ u ++ " vs. " ++ show t
-    | otherwise                     = return (Map.singleton u t)
+    | otherwise                     = do
+        let s = Map.singleton u t
+        st <- get
+        put st {tInfSubstitution = s `composeSubstitution` tInfSubstitution st }
+        return s
 
 -- |Unify two types (using the most general unifier)
 mgu :: Type -> Type -> TInf Substitution
@@ -285,8 +285,10 @@ mgu t1 t2                = throwError $ "types do not unify: " ++ show t1 ++ " a
 idName :: AST.Identifier -> String
 idName (AST.Identifier i, _) = i
 
-getScheme :: ScopedTypeCtx -> String -> TInf Scheme
-getScheme stack varName = getScheme' (Stack.stackToList stack) varName
+getScheme :: String -> TInf Scheme
+getScheme varName = do
+    stack <- ask
+    getScheme' (Stack.stackToList stack) varName
     where
         getScheme' :: [TypeCtx] -> String -> TInf Scheme
         getScheme' [] _ = throwError $ "unbound variable: " ++ varName
@@ -295,8 +297,10 @@ getScheme stack varName = getScheme' (Stack.stackToList stack) varName
                 Nothing -> getScheme' ctxs varName
                 Just scheme -> return scheme
 
-tInfVarName :: ScopedTypeCtx -> String -> TInf Type
-tInfVarName stack varName = tInfVarName' (Stack.stackToList stack) varName
+tInfVarName :: String -> TInf Type
+tInfVarName varName = do
+    stack <- ask
+    tInfVarName' (Stack.stackToList stack) varName
     where
         tInfVarName' :: [TypeCtx] -> String -> TInf Type
         tInfVarName' [] _ = throwError $ "unbound variable: " ++ varName
@@ -306,139 +310,141 @@ tInfVarName stack varName = tInfVarName' (Stack.stackToList stack) varName
                 Just scheme -> instantiate scheme
 
 -- |Perform type inference on an AST identifier
-tInfId :: ScopedTypeCtx -> AST.Identifier -> TInf (Substitution, Type)
-tInfId stack i = do
-    t <- tInfVarName stack (idName i)
+tInfId :: AST.Identifier -> TInf (Substitution, Type)
+tInfId i = do
+    t <- tInfVarName (idName i)
     return (nullSubstitution, t)
 
 -- |Perform type inference on an AST constant
-tInfConst :: ScopedTypeCtx -> AST.Constant -> TInf (Substitution, Type)
-tInfConst _ (AST.ConstBool _, _) = return (nullSubstitution, TBool)
-tInfConst _ (AST.ConstInt _, _) = return (nullSubstitution, TInt)
-tInfConst _ (AST.ConstChar _, _) = return (nullSubstitution, TChar)
-tInfConst _ (AST.ConstEmptyList, _) = do
+tInfConst :: AST.Constant -> TInf (Substitution, Type)
+tInfConst (AST.ConstBool _, _) = return (nullSubstitution, TBool)
+tInfConst (AST.ConstInt _, _) = return (nullSubstitution, TInt)
+tInfConst (AST.ConstChar _, _) = return (nullSubstitution, TChar)
+tInfConst (AST.ConstEmptyList, _) = do
     tVar <- newTypeVar "a"
     return (nullSubstitution, TList tVar)
 
 -- |Perform type inference on an AST expression
-tInfExpr :: ScopedTypeCtx -> AST.Expression -> TInf (Substitution, Type)
-tInfExpr ctx (AST.ExprIdentifier id, _) = tInfId ctx id
-tInfExpr ctx (AST.ExprIdentifierField id fields, _) = do
-    (s, t) <- tInfId ctx id
-    (s', t') <- tTraverseFields ctx t fields
+tInfExpr :: AST.Expression -> TInf (Substitution, Type)
+tInfExpr (AST.ExprIdentifier id, _) = tInfId id
+tInfExpr (AST.ExprIdentifierField id fields, _) = do
+    (s, t) <- tInfId id
+    (s', t') <- tTraverseFields t fields
     return (s' `composeSubstitution` s, t')
     where
-        tTraverseFields :: ScopedTypeCtx -> Type -> [AST.Field] -> TInf (Substitution, Type)
-        tTraverseFields _ t [] = return (nullSubstitution, t)
-        tTraverseFields ctx t (field:fields) =
+        tTraverseFields :: Type -> [AST.Field] -> TInf (Substitution, Type)
+        tTraverseFields t [] = return (nullSubstitution, t)
+        tTraverseFields t (field:fields) =
             case field of
                 (AST.FieldHd, _) -> do
                     tVar <- newTypeVar "fld"
                     s <- mgu t (TList tVar)
-                    (s', t') <- tTraverseFields (apply s ctx) (apply s tVar) fields
+                    (s', t') <- tTraverseFields (apply s tVar) fields
                     return (s' `composeSubstitution` s, t')
                 (AST.FieldTl, _) -> do
                     tVar <- newTypeVar "fld"
                     s <- mgu t (TList tVar)
-                    (s', t') <- tTraverseFields (apply s ctx) (apply s (TList tVar)) fields
+                    (s', t') <- tTraverseFields (apply s (TList tVar)) fields
                     return (s' `composeSubstitution` s, t')
                 (AST.FieldFst, _) -> undefined
                 (AST.FieldSnd, _) -> undefined
 
-tInfExpr ctx (AST.ExprFunCall id args, _) = do
+tInfExpr (AST.ExprFunCall id args, _) = do
     tReturn <- newTypeVar (idName id ++ "_ret")
-    (s1, t1) <- tInfId ctx id
-    (s2, ts) <- tInfExprs (apply s1 ctx) args
+    (s1, t1) <- tInfId id
+    (s2, ts) <- tInfExprs args
     s <- mgu (apply s2 t1) (TFunction ts tReturn)
 
     return (s2 `composeSubstitution` s1, apply s tReturn)
     --if length args == 0
         --then return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s tReturn)
         --else return (s2 `composeSubstitution` s1, apply s tReturn)
-tInfExpr ctx (AST.ExprConstant const, _) = tInfConst ctx const
-tInfExpr ctx (AST.ExprTuple e1 e2, _) = tInfTuple ctx e1 e2
-tInfExpr ctx (AST.ExprUnaryOp op e, _) = tInfUnaryOp ctx op e
-tInfExpr ctx (AST.ExprBinaryOp op e1 e2, _) = tInfBinaryOp ctx op e1 e2
+tInfExpr (AST.ExprConstant const, _) = tInfConst const
+tInfExpr (AST.ExprTuple e1 e2, _) = tInfTuple e1 e2
+tInfExpr (AST.ExprUnaryOp op e, _) = tInfUnaryOp op e
+tInfExpr (AST.ExprBinaryOp op e1 e2, _) = tInfBinaryOp op e1 e2
 
 -- |Perform type inference on a list of AST expressions
-tInfExprs :: ScopedTypeCtx -> [AST.Expression] -> TInf (Substitution, [Type])
-tInfExprs _ [] = return (nullSubstitution, [])
-tInfExprs ctx (expr:exprs) = do
-    (s1, t) <- tInfExpr ctx expr
-    (s2, ts) <- tInfExprs (apply s1 ctx) exprs
+tInfExprs :: [AST.Expression] -> TInf (Substitution, [Type])
+tInfExprs [] = return (nullSubstitution, [])
+tInfExprs (expr:exprs) = do
+    (s1, t) <- tInfExpr expr
+    (s2, ts) <- tInfExprs exprs
 
     return (s2 `composeSubstitution` s1, apply s2 t : ts)
 
-tInfTuple :: ScopedTypeCtx -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
-tInfTuple ctx e1 e2 = do
-    (s1, t1) <- tInfExpr ctx e1
-    (s2, t2) <- tInfExpr (apply s1 ctx) e2
+tInfTuple :: AST.Expression -> AST.Expression -> TInf (Substitution, Type)
+tInfTuple e1 e2 = do
+    (s1, t1) <- tInfExpr e1
+    (s2, t2) <- tInfExpr e2
     return (s2 `composeSubstitution` s1, TTuple (apply s2 t1) t2)
 
-tInfUnaryOp :: ScopedTypeCtx -> AST.UnaryOperator -> AST.Expression -> TInf (Substitution, Type)
-tInfUnaryOp ctx (AST.UnaryOpNeg, _) e = do
-    (s1, t1) <- tInfExpr ctx e
+tInfUnaryOp :: AST.UnaryOperator -> AST.Expression -> TInf (Substitution, Type)
+tInfUnaryOp (AST.UnaryOpNeg, _) e = do
+    (s1, t1) <- tInfExpr e
     s <- mgu t1 TBool
     return (s `composeSubstitution` s1, TBool)
-tInfUnaryOp ctx (AST.UnaryOpSubtr, _) e = do
-    (s1, t1) <- tInfExpr ctx e
+tInfUnaryOp (AST.UnaryOpSubtr, _) e = do
+    (s1, t1) <- tInfExpr e
     s <- mgu t1 TInt
     return (s `composeSubstitution` s1, TInt)
 
-tInfBinaryOp :: ScopedTypeCtx -> AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
-tInfBinaryOp ctx (AST.BinaryOpOr, _) e1 e2 = do
-    (s1, t1) <- tInfExpr ctx e1
+tInfBinaryOp :: AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf (Substitution, Type)
+tInfBinaryOp (AST.BinaryOpOr, _) e1 e2 = do
+    (s1, t1) <- tInfExpr e1
     s1' <- mgu t1 TBool
 
-    (s2, t2) <- tInfExpr (apply (s1' `composeSubstitution` s1) ctx) e2
+    (s2, t2) <- tInfExpr e2
     s2' <- mgu (apply (s2 `composeSubstitution` s1') t1) t2
 
     return (s2' `composeSubstitution` s2 `composeSubstitution` s1' `composeSubstitution` s1, TBool)
-tInfBinaryOp ctx (AST.BinaryOpAnd, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpOr, p) e1 e2
-tInfBinaryOp ctx (AST.BinaryOpEq, _) e1 e2 = do
-    (s1, t1) <- tInfExpr ctx e1
-    (s2, t2) <- tInfExpr (apply s1 ctx) e2
+tInfBinaryOp (AST.BinaryOpAnd, p) e1 e2 = tInfBinaryOp (AST.BinaryOpOr, p) e1 e2
+tInfBinaryOp (AST.BinaryOpEq, _) e1 e2 = do
+    (s1, t1) <- tInfExpr e1
+    (s2, t2) <- tInfExpr e2
     s <- mgu (apply s2 t1) t2
     return (s `composeSubstitution` s2 `composeSubstitution` s1, TBool)
-tInfBinaryOp ctx (AST.BinaryOpNEq, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpEq, p) e1 e2
-tInfBinaryOp ctx (AST.BinaryOpLT, _) e1 e2 = do
-    (s1, t1) <- tInfExpr ctx e1
+tInfBinaryOp (AST.BinaryOpNEq, p) e1 e2 = tInfBinaryOp (AST.BinaryOpEq, p) e1 e2
+tInfBinaryOp (AST.BinaryOpLT, _) e1 e2 = do
+    (s1, t1) <- tInfExpr e1
     s1' <- mgu t1 TInt
 
-    (s2, t2) <- tInfExpr (apply (s1' `composeSubstitution` s1) ctx) e2
+    (s2, t2) <- tInfExpr e2
     s2' <- mgu (apply (s2 `composeSubstitution` s1') t1) t2
 
     return (s2' `composeSubstitution` s2 `composeSubstitution` s1' `composeSubstitution` s1, TBool)
-tInfBinaryOp ctx (AST.BinaryOpGT, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpLT, p) e1 e2
-tInfBinaryOp ctx (AST.BinaryOpLTE, p) e1 e2= tInfBinaryOp ctx (AST.BinaryOpLT, p) e1 e2
-tInfBinaryOp ctx (AST.BinaryOpGTE, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpLT, p) e1 e2
-tInfBinaryOp ctx (AST.BinaryOpConcat, _) e1 e2 = do
-    (s1, t1) <- tInfExpr ctx e1
-    (s2, t2) <- tInfExpr (apply s1 ctx) e2
+tInfBinaryOp (AST.BinaryOpGT, p) e1 e2 = tInfBinaryOp (AST.BinaryOpLT, p) e1 e2
+tInfBinaryOp (AST.BinaryOpLTE, p) e1 e2= tInfBinaryOp (AST.BinaryOpLT, p) e1 e2
+tInfBinaryOp (AST.BinaryOpGTE, p) e1 e2 = tInfBinaryOp (AST.BinaryOpLT, p) e1 e2
+tInfBinaryOp (AST.BinaryOpConcat, _) e1 e2 = do
+    (s1, t1) <- tInfExpr e1
+    (s2, t2) <- tInfExpr e2
     s <- mgu (TList (apply s2 t1)) t2
     return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s t2)
-tInfBinaryOp ctx (AST.BinaryOpPlus, _) e1 e2 = do
-    (s1, t1) <- tInfExpr ctx e1
+tInfBinaryOp (AST.BinaryOpPlus, _) e1 e2 = do
+    (s1, t1) <- tInfExpr e1
     s1' <- mgu t1 TInt
 
-    (s2, t2) <- tInfExpr (apply (s1' `composeSubstitution` s1) ctx) e2
+    (s2, t2) <- tInfExpr e2
     s2' <- mgu (apply (s2 `composeSubstitution` s1') t1) t2
 
     return (s2' `composeSubstitution` s2 `composeSubstitution` s1' `composeSubstitution` s1, TInt)
-tInfBinaryOp ctx (AST.BinaryOpSubtr, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpPlus, p) e1 e2
-tInfBinaryOp ctx (AST.BinaryOpMult, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpPlus, p) e1 e2
-tInfBinaryOp ctx (AST.BinaryOpDiv, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpPlus, p) e1 e2
-tInfBinaryOp ctx (AST.BinaryOpMod, p) e1 e2 = tInfBinaryOp ctx (AST.BinaryOpPlus, p) e1 e2
+tInfBinaryOp (AST.BinaryOpSubtr, p) e1 e2 = tInfBinaryOp (AST.BinaryOpPlus, p) e1 e2
+tInfBinaryOp (AST.BinaryOpMult, p) e1 e2 = tInfBinaryOp (AST.BinaryOpPlus, p) e1 e2
+tInfBinaryOp (AST.BinaryOpDiv, p) e1 e2 = tInfBinaryOp (AST.BinaryOpPlus, p) e1 e2
+tInfBinaryOp (AST.BinaryOpMod, p) e1 e2 = tInfBinaryOp (AST.BinaryOpPlus, p) e1 e2
 
 ------------------------------------------------------------------------------------------------------------------------
 
 -- |Perform type inference on the global SPL declarations. Rewrite the AST such that all variables are typed as
 -- completely as possible.
-tInfSPL :: ScopedTypeCtx -> AST.SPL -> TInf (AST.SPL, Substitution, Type)
-tInfSPL ctx decls = do
+tInfSPL :: AST.SPL -> TInf (AST.SPL, Substitution, Type)
+tInfSPL decls = do
+    ctx <- ask
     let initCtx = Stack.stackPush ctx emptyCtx -- Create top scope
     ctx' <- addGlobalsToCtx initCtx decls -- Add globals to to scope
-    tInfSPL' ctx' decls
+    local (\ _ -> ctx') (tInfSPL' decls)
+
     where
         addGlobalsToCtx :: ScopedTypeCtx -> AST.SPL -> TInf ScopedTypeCtx
         addGlobalsToCtx ctx [] = return ctx
@@ -453,18 +459,18 @@ tInfSPL ctx decls = do
                 (AST.DeclF (AST.FunDeclTyped i _ _ _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
                 (AST.DeclF (AST.FunDeclUntyped i _ _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
 
-        tInfSPL' :: ScopedTypeCtx -> AST.SPL -> TInf (AST.SPL, Substitution, Type)
-        tInfSPL' _ [] = return ([], nullSubstitution, TVoid)
-        tInfSPL' ctx (decl:decls) = do
+        tInfSPL' :: AST.SPL -> TInf (AST.SPL, Substitution, Type)
+        tInfSPL' [] = return ([], nullSubstitution, TVoid)
+        tInfSPL' (decl:decls) = do
             -- Infer type of the declaration
-            (decl', s1, varName, t1) <- tInfDecl ctx decl
+            (decl', s1, varName, t1) <- tInfDecl decl
 
             -- Get the type scheme of the variable/function we just declared and unify it with the actual type
-            (Scheme _ t1') <- getScheme ctx varName
+            (Scheme _ t1') <- getScheme varName
             s2 <- mgu t1' t1
 
             -- Get the next declarations, using the unified type scheme
-            (decls', s3, t2) <- tInfSPL' (apply (s2 `composeSubstitution` s1) ctx) decls
+            (decls', s3, t2) <- tInfSPL' decls
 
             -- Infer type for this declaration again, using the "back-flown" information from the next declarations
             --(declPost, s1Post, varNamePost, t1Post) <- tInfDecl (apply s3 ctx) decl
@@ -475,20 +481,20 @@ tInfSPL ctx decls = do
                         t2
                     )
 
-tInfDecl :: ScopedTypeCtx -> AST.Decl -> TInf (AST.Decl, Substitution, String, Type)
-tInfDecl ctx (AST.DeclV decl, p) = do
-    (decl', s, varName, t) <- tInfVarDecl ctx decl
+tInfDecl :: AST.Decl -> TInf (AST.Decl, Substitution, String, Type)
+tInfDecl (AST.DeclV decl, p) = do
+    (decl', s, varName, t) <- tInfVarDecl decl
     return ((AST.DeclV decl', p), s, varName, t)
-tInfDecl ctx (AST.DeclF decl, p) = do
-    (decl', s, varName, t) <- tInfFunDecl ctx decl
+tInfDecl (AST.DeclF decl, p) = do
+    (decl', s, varName, t) <- tInfFunDecl decl
     return ((AST.DeclF decl', p), s, varName, t)
 
-tInfVarDecl :: ScopedTypeCtx -> AST.VarDecl -> TInf (AST.VarDecl, Substitution, String, Type)
-tInfVarDecl ctx decl =
+tInfVarDecl :: AST.VarDecl -> TInf (AST.VarDecl, Substitution, String, Type)
+tInfVarDecl decl =
     case decl of
         (AST.VarDeclTyped annotatedType identifier expr, p) ->
             let annotatedT = rTranslateType annotatedType in do
-            (ast, s, str, t) <- tInfVarDecl' p ctx identifier expr
+            (ast, s, str, t) <- tInfVarDecl' p identifier expr
             s' <- mgu annotatedT t `catchError` (\_ ->
                 throwError $ "Could not unify types"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateType p annotatedT)
@@ -498,20 +504,20 @@ tInfVarDecl ctx decl =
                 else throwError $ "Expected type is more general than the inferred type"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateType p t) ++ "."
-        (AST.VarDeclUntyped identifier expr, p) -> tInfVarDecl' p ctx identifier expr
+        (AST.VarDeclUntyped identifier expr, p) -> tInfVarDecl' p identifier expr
     where
-        tInfVarDecl' :: Pos.Pos -> ScopedTypeCtx -> AST.Identifier -> AST.Expression -> TInf (AST.VarDecl, Substitution, String, Type)
-        tInfVarDecl' p ctx identifier expr = do
-            (s, t) <- tInfExpr ctx expr
+        tInfVarDecl' :: Pos.Pos -> AST.Identifier -> AST.Expression -> TInf (AST.VarDecl, Substitution, String, Type)
+        tInfVarDecl' p identifier expr = do
+            (s, t) <- tInfExpr expr
             let t' = translateType p t
             return ((AST.VarDeclTyped t' identifier expr, p), s, idName identifier, t)
 
-tInfFunDecl :: ScopedTypeCtx -> AST.FunDecl -> TInf (AST.FunDecl, Substitution, String, Type)
-tInfFunDecl ctx decl =
+tInfFunDecl :: AST.FunDecl -> TInf (AST.FunDecl, Substitution, String, Type)
+tInfFunDecl decl =
     case decl of
         (AST.FunDeclTyped identifier args annotatedType stmts, p) ->
             let annotatedT = rTranslateFunType annotatedType in do
-            (ast, s, str, t) <- tInfFunDecl' p ctx identifier args stmts
+            (ast, s, str, t) <- tInfFunDecl' p identifier args stmts
             s' <- mgu annotatedT t `catchError` (\_ ->
                 throwError $ "Could not unify types"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
@@ -521,19 +527,21 @@ tInfFunDecl ctx decl =
                 else throwError $ "Expected type is more general than the inferred type"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateFunType p t) ++ "."
-        (AST.FunDeclUntyped identifier args stmts, p) -> tInfFunDecl' p ctx identifier args stmts
+        (AST.FunDeclUntyped identifier args stmts, p) -> tInfFunDecl' p identifier args stmts
     where
-        tInfFunDecl' :: Pos.Pos -> ScopedTypeCtx -> AST.Identifier -> [AST.Identifier] -> [AST.Statement] -> TInf (AST.FunDecl, Substitution, String, Type)
-        tInfFunDecl' p ctx identifier args stmts = do
+        tInfFunDecl' :: Pos.Pos -> AST.Identifier -> [AST.Identifier] -> [AST.Statement] -> TInf (AST.FunDecl, Substitution, String, Type)
+        tInfFunDecl' p identifier args stmts = do
+            ctx <- ask
             let newCtx = Stack.stackPush ctx emptyCtx
             scopedCtx <- addArgsToCtx (idName identifier ++ "_") newCtx args -- Create the function's scoped context
-            (stmts', s, t) <- tInfStatements scopedCtx stmts
+            local (\_ -> scopedCtx) (do
+                (stmts', s, t) <- tInfStatements stmts
 
-            argsTypes <- getArgsTypes (apply s scopedCtx) args
-            let funType = TFunction argsTypes t
-            let funTypeAST = translateFunType p funType
+                argsTypes <- getArgsTypes args
+                let funType = TFunction argsTypes t
+                let funTypeAST = translateFunType p funType
 
-            return ((AST.FunDeclTyped identifier args funTypeAST stmts', p), s, idName identifier, funType)
+                return ((AST.FunDeclTyped identifier args funTypeAST stmts', p), s, idName identifier, funType))
             where
                 addArgsToCtx :: String -> ScopedTypeCtx -> [AST.Identifier] -> TInf ScopedTypeCtx
                 addArgsToCtx prefix ctx [] = return ctx
@@ -543,58 +551,60 @@ tInfFunDecl ctx decl =
                     return $ add ctx' (idName arg) (Scheme [] typeVar)
                     -- return $ add ctx' (idName arg) (generalize ctx' typeVar)
 
-                getArgsTypes :: ScopedTypeCtx -> [AST.Identifier] -> TInf [Type]
-                getArgsTypes _ [] = return []
-                getArgsTypes ctx (arg:args) = do
-                    t <- tInfVarName ctx $ idName arg
-                    ts <- getArgsTypes ctx args
+                getArgsTypes :: [AST.Identifier] -> TInf [Type]
+                getArgsTypes [] = return []
+                getArgsTypes (arg:args) = do
+                    t <- tInfVarName $ idName arg
+                    ts <- getArgsTypes args
                     return $ t:ts
 
 
-tInfStatements :: ScopedTypeCtx -> [AST.Statement] -> TInf ([AST.Statement], Substitution, Type)
-tInfStatements _ [] = return ([], nullSubstitution, TVoid)
-tInfStatements ctx (statement:statements) = do
-    (statement', s1, varName, t1, returnsValue) <- tInfStatement ctx statement
+tInfStatements :: [AST.Statement] -> TInf ([AST.Statement], Substitution, Type)
+tInfStatements [] = return ([], nullSubstitution, TVoid)
+tInfStatements (statement:statements) = do
+    (statement', s1, varName, t1, returnsValue) <- tInfStatement statement
 
     -- Update local context if the statement declared a new variable
+    ctx <- ask
     let ctx' = (if varName == ""
-                    then apply s1 ctx
-                    else add (apply s1 ctx) varName (Scheme [] t1)
+                    then ctx
+                    else add ctx varName (Scheme [] t1)
                 )
+    local (\_ -> ctx') (do
+        (statements', s2, t2) <- tInfStatements statements
 
-    (statements', s2, t2) <- tInfStatements ctx' statements
+        if returnsValue
+            then
+                case t2 of
+                    TVoid -> return (apply s2 statement' : statements', s2 `composeSubstitution` s1, apply s2 t1)
+                    _ -> do
+                        s <- mgu (apply s2 t1) t2
+                        return (
+                            apply (s `composeSubstitution` s2) statement' : statements',
+                            s `composeSubstitution` s2 `composeSubstitution` s1,
+                            apply s t2)
+            else return (apply s2 statement' : statements', s2 `composeSubstitution` s1, t2))
 
-    if returnsValue
-        then
-            case t2 of
-                TVoid -> return (apply s2 statement' : statements', s2 `composeSubstitution` s1, apply s2 t1)
-                _ -> do
-                    s <- mgu (apply s2 t1) t2
-                    return (
-                        apply (s `composeSubstitution` s2) statement' : statements',
-                        s `composeSubstitution` s2 `composeSubstitution` s1,
-                        apply s t2)
-        else return (apply s2 statement' : statements', s2 `composeSubstitution` s1, t2)
-
-tInfStatement :: ScopedTypeCtx -> AST.Statement -> TInf (AST.Statement, Substitution, String, Type, Bool)
-tInfStatement ctx (AST.StmtVarDecl decl, p) = do
-    (decl', s, varName, t) <- tInfVarDecl ctx decl
+tInfStatement :: AST.Statement -> TInf (AST.Statement, Substitution, String, Type, Bool)
+tInfStatement (AST.StmtVarDecl decl, p) = do
+    (decl', s, varName, t) <- tInfVarDecl decl
+    ctx <- ask
     case Stack.stackPeek ctx of
         Just (TypeCtx ctx') ->
             if Map.member varName ctx'
                 then throwError $ "Variable multiply defined in scope: " ++ varName ++ show p
                 else return ((AST.StmtVarDecl decl', p), s, varName, t, False)
 
-tInfStatement ctx (AST.StmtIf expr st, p) = do
-    (s1, t1) <- tInfExpr ctx expr
+tInfStatement (AST.StmtIf expr st, p) = do
+    (s1, t1) <- tInfExpr expr
     s <- mgu t1 TBool
-    (st', s2, varName, t2, returnsValue) <- tInfStatement (apply (s `composeSubstitution` s1) ctx) st
+    (st', s2, varName, t2, returnsValue) <- tInfStatement st
     return ((AST.StmtIf expr st', p), s2 `composeSubstitution` s `composeSubstitution` s1, varName, t2, returnsValue)
-tInfStatement ctx (AST.StmtIfElse expr st1 st2, p) = do
-    (es, et1) <- tInfExpr ctx expr
+tInfStatement (AST.StmtIfElse expr st1 st2, p) = do
+    (es, et1) <- tInfExpr expr
     s <- mgu et1 TBool
-    (st1', s1', varName, st1, returnsValue1) <- tInfStatement (apply (s `composeSubstitution` es) ctx) st1
-    (st2', s2', varName, st2, returnsValue2) <- tInfStatement (apply (s1' `composeSubstitution` s `composeSubstitution` es) ctx) st2
+    (st1', s1', varName, st1, returnsValue1) <- tInfStatement st1
+    (st2', s2', varName, st2, returnsValue2) <- tInfStatement st2
 
     if returnsValue1
         then if returnsValue2
@@ -618,33 +628,35 @@ tInfStatement ctx (AST.StmtIfElse expr st1 st2, p) = do
             "",
             apply s2' st1,
             False)
-tInfStatement ctx (AST.StmtWhile expr st, p) = do
-    (s1, t1) <- tInfExpr ctx expr
+tInfStatement (AST.StmtWhile expr st, p) = do
+    (s1, t1) <- tInfExpr expr
     s <- mgu t1 TBool
-    (st', s2, varName, t2, returnsValue) <- tInfStatement (apply (s `composeSubstitution` s1) ctx) st
+    (st', s2, varName, t2, returnsValue) <- tInfStatement st
     return ((AST.StmtWhile expr st', p), s2 `composeSubstitution` s `composeSubstitution` s1, varName, t2, returnsValue)
-tInfStatement ctx (AST.StmtBlock stmts, p) = do
+tInfStatement (AST.StmtBlock stmts, p) = do
+    ctx <- ask
     let newCtx = Stack.stackPush ctx emptyCtx
-    (stmts, s, t) <- tInfStatements newCtx stmts
-    case t of
-        TVoid -> return ((AST.StmtBlock stmts, p), s, "", t, False)
-        _ -> return ((AST.StmtBlock stmts, p), s, "", t, True)
-tInfStatement ctx (AST.StmtAssignment identifier expr, p) = do
-    (Scheme _ t) <- getScheme ctx (idName identifier)
-    (s1, t1) <- tInfExpr ctx expr
+    local (\_ -> newCtx) (do
+        (stmts, s, t) <- tInfStatements stmts
+        case t of
+            TVoid -> return ((AST.StmtBlock stmts, p), s, "", t, False)
+            _ -> return ((AST.StmtBlock stmts, p), s, "", t, True))
+tInfStatement (AST.StmtAssignment identifier expr, p) = do
+    (Scheme _ t) <- getScheme (idName identifier)
+    (s1, t1) <- tInfExpr expr
 
     s <- mgu t t1
 
     let t' = translateType p (apply s t1)
     return ((AST.StmtAssignment identifier expr, p), s `composeSubstitution` s1, "", apply s t1, False)
-tInfStatement ctx (AST.StmtAssignmentField identifier fields expr, p) = throwError "Assigning to fields is not supported"
-tInfStatement ctx (AST.StmtFunCall identifier expressions, p) = do
-    (s, t) <- tInfExpr ctx (AST.ExprFunCall identifier expressions, p)
+tInfStatement (AST.StmtAssignmentField identifier fields expr, p) = throwError "Assigning to fields is not supported"
+tInfStatement (AST.StmtFunCall identifier expressions, p) = do
+    (s, t) <- tInfExpr (AST.ExprFunCall identifier expressions, p)
     return ((AST.StmtFunCall identifier expressions, p), s, "", TVoid, False)
-tInfStatement ctx (AST.StmtReturn expr, p) = do
-    (s, t) <- tInfExpr ctx expr
+tInfStatement (AST.StmtReturn expr, p) = do
+    (s, t) <- tInfExpr expr
     return ((AST.StmtReturn expr, p), s, "", t, True)
-tInfStatement ctx (AST.StmtReturnVoid, p) = return ((AST.StmtReturnVoid, p), nullSubstitution, "", TVoid, True)
+tInfStatement (AST.StmtReturnVoid, p) = return ((AST.StmtReturnVoid, p), nullSubstitution, "", TVoid, True)
 
 ------------------------------------------------------------------------------------------------------------------------
 
