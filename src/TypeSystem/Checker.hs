@@ -192,11 +192,13 @@ instance Types a => Types (Stack.Stack a) where
             _ -> Set.empty
     apply s stack =
         case Stack.stackPop stack of
-            Just (stack', a) -> Stack.stackPush stack' (apply s a)
+            --Just (stack', a) -> Stack.stackPush stack' (apply s a)
+            Just (stack', a) -> Stack.stackPush (apply s stack') (apply s a)
             _ -> stack
     applyOnlyRename s stack =
         case Stack.stackPop stack of
-            Just (stack', a) -> Stack.stackPush stack' (applyOnlyRename s a)
+            --Just (stack', a) -> Stack.stackPush stack' (applyOnlyRename s a)
+            Just (stack', a) -> Stack.stackPush (applyOnlyRename s stack') (applyOnlyRename s a)
             _ -> stack
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -204,7 +206,7 @@ instance Types a => Types (Stack.Stack a) where
 -- |Abstract a type over all type variables free in the type but not free in the context, i.e. creates a type scheme
 -- for a type in a given context, by binding all type variables in the type that are not bound in the context to the
 -- type.
-generalize :: TypeCtx -> Type -> Scheme
+generalize :: ScopedTypeCtx -> Type -> Scheme
 generalize ctx t =
     let vars = Set.toList ((freeTypeVars t) `Set.difference` (freeTypeVars ctx)) in
         Scheme vars t
@@ -347,7 +349,7 @@ tInfExpr ctx (AST.ExprFunCall id args, _) = do
     tReturn <- newTypeVar (idName id ++ "_ret")
     (s1, t1) <- tInfId ctx id
     (s2, ts) <- tInfExprs (apply s1 ctx) args
-    s <- mgu (apply s2 t1) (TFunction ts tReturn)
+    s <- mgu t1 (TFunction ts tReturn)
     return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s tReturn)
 tInfExpr ctx (AST.ExprConstant const, _) = tInfConst ctx const
 tInfExpr ctx (AST.ExprTuple e1 e2, _) = tInfTuple ctx e1 e2
@@ -442,6 +444,8 @@ tInfSPL ctx decls = do
             case decl of
                 (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
                 (AST.DeclV (AST.VarDeclUntyped i _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
+                --(AST.DeclF (AST.FunDeclTyped i _ _ _, _), _) -> return $ add ctx' (idName i) (generalize ctx' typeVar)
+                --(AST.DeclF (AST.FunDeclUntyped i _ _, _), _) -> return $ add ctx' (idName i) (generalize ctx' typeVar)
                 (AST.DeclF (AST.FunDeclTyped i _ _ _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
                 (AST.DeclF (AST.FunDeclUntyped i _ _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
 
