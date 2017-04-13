@@ -239,6 +239,11 @@ newTypeVar suffix = do
     put s {tInfSupply = tInfSupply s + 1}
     return (TVar ("t_" ++ show (tInfSupply s) ++ suffix))
 
+substitution :: TInf Substitution
+substitution = do
+    s <- get
+    return $ tInfSubstitution s
+
 -- |Replace bound type variables in a scheme with fresh type variables
 instantiate :: Scheme -> TInf Type
 instantiate (Scheme vars t) = do
@@ -287,8 +292,10 @@ idName (AST.Identifier i, _) = i
 
 getScheme :: String -> TInf Scheme
 getScheme varName = do
-    stack <- ask
-    getScheme' (Stack.stackToList stack) varName
+    ctx <- ask
+    s <- substitution
+    let ctx' = apply s ctx
+    getScheme' (Stack.stackToList ctx') varName
     where
         getScheme' :: [TypeCtx] -> String -> TInf Scheme
         getScheme' [] _ = throwError $ "unbound variable: " ++ varName
@@ -299,8 +306,10 @@ getScheme varName = do
 
 tInfVarName :: String -> TInf Type
 tInfVarName varName = do
-    stack <- ask
-    tInfVarName' (Stack.stackToList stack) varName
+    ctx <- ask
+    s <- substitution
+    let ctx' = apply s ctx
+    tInfVarName' (Stack.stackToList ctx') varName
     where
         tInfVarName' :: [TypeCtx] -> String -> TInf Type
         tInfVarName' [] _ = throwError $ "unbound variable: " ++ varName
