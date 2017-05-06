@@ -725,10 +725,59 @@ instance Dependencies AST.FunDecl where
             ([g | g <- globalDefs', g /= idName i], deps)
 
 instance Dependencies AST.Statement where
-    dependencies globalDefs _ = (globalDefs, globalDefs)
+    dependencies globalDefs (AST.StmtVarDecl decl, _) = dependencies globalDefs decl
+    dependencies globalDefs (AST.StmtIf e s, _) =
+        let (globalDefs', deps) = dependencies globalDefs e in
+            let (globalDefs'', deps') = dependencies globalDefs' s in
+                (globalDefs', deps ++ deps')
+    dependencies globalDefs (AST.StmtIfElse e s1 s2, _) =
+        let (globalDefs', deps) = dependencies globalDefs e in
+            let (globalDefs'', deps') = dependencies globalDefs' s1 in
+                let (globalDefs''', deps'') = dependencies globalDefs' s2 in
+                    (globalDefs', deps ++ deps' ++ deps'')
+    dependencies globalDefs (AST.StmtWhile e s, _) =
+        let (globalDefs', deps) = dependencies globalDefs e in
+            let (globalDefs'', deps') = dependencies globalDefs' s in
+                (globalDefs', deps ++ deps')
+    dependencies globalDefs (AST.StmtBlock ss, _) = dependencies globalDefs ss
+    dependencies globalDefs (AST.StmtAssignment i e, _) =
+        let (_, deps) = dependencies globalDefs i in
+            let (_, deps') = dependencies globalDefs e in
+                (globalDefs, deps ++ deps')
+    dependencies globalDefs (AST.StmtAssignmentField i _ e, _) =
+        let (_, deps) = dependencies globalDefs i in
+            let (_, deps') = dependencies globalDefs e in
+                (globalDefs, deps ++ deps')
+    dependencies globalDefs (AST.StmtFunCall i es, _) =
+        let (_, deps) = dependencies globalDefs i in
+            let (_, deps') = dependencies globalDefs es in
+                (globalDefs, deps ++ deps')
+    dependencies globalDefs (AST.StmtReturn e, _) = dependencies globalDefs e
+    dependencies globalDefs (AST.StmtReturnVoid, _) = (globalDefs, [])
 
 instance Dependencies AST.Expression where
-    dependencies globalDefs _ = (globalDefs, globalDefs)
+    dependencies globalDefs (AST.ExprIdentifier i, _) = dependencies globalDefs i
+    dependencies globalDefs (AST.ExprIdentifierField i _, _) = dependencies globalDefs i
+    dependencies globalDefs (AST.ExprFunCall i es, _) =
+        let (_, deps) = dependencies globalDefs i in
+            let (_, deps') = dependencies globalDefs es in
+                (globalDefs, deps ++ deps')
+    dependencies globalDefs (AST.ExprConstant _, _) = (globalDefs, [])
+    dependencies globalDefs (AST.ExprTuple e1 e2, _) =
+        let (_, deps) = dependencies globalDefs e1 in
+            let (_, deps') = dependencies globalDefs e2 in
+                (globalDefs, deps ++ deps')
+    dependencies globalDefs (AST.ExprUnaryOp _ e, _) = dependencies globalDefs e
+    dependencies globalDefs (AST.ExprBinaryOp _ e1 e2, _) =
+        let (_, deps) = dependencies globalDefs e1 in
+            let (_, deps') = dependencies globalDefs e2 in
+                (globalDefs, deps ++ deps')
+
+instance Dependencies AST.Identifier where
+    dependencies globalDefs (AST.Identifier i, _) =
+        if i `elem` globalDefs
+            then (globalDefs, [i])
+            else (globalDefs, [])
 
 ------------------------------------------------------------------------------------------------------------------------
 
