@@ -27,6 +27,7 @@ library
                      , TypeSystem.Checker
   build-depends:       base >= 4.7 && < 5
                      , containers
+                     , GraphSCC
                      , transformers
                      , mtl
                      , list-extras
