@@ -720,7 +720,6 @@ instance Dependencies AST.FunDecl where
     dependencies globalDefs (AST.FunDeclTyped i is _ ss, _) =
         let (globalDefs', deps) = dependencies [g | g <- globalDefs, g `notElem` map idName is] ss in
             ([g | g <- globalDefs', g /= idName i], deps)
-
     dependencies globalDefs (AST.FunDeclUntyped i is ss, _) =
         let (globalDefs', deps) = dependencies [g | g <- globalDefs, g `notElem` map idName is] ss in
             ([g | g <- globalDefs', g /= idName i], deps)
