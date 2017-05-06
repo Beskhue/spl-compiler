@@ -47,6 +47,7 @@ test-suite spl-compiler-test
   main-is:             Test.hs
   other-modules:       Text.Regex.ThompsonTest
                      , Lexer.LexerTest
+                     , Parser.SPLParserTest
                      , TypeSystem.CheckerTest
   build-depends:       base
                      , setenv
