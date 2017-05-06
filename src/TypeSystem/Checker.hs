@@ -493,6 +493,8 @@ tInfSPL decls = do
                         t2
                     )
 
+-- |Find the graph of (global) dependencies; a list of tuples of declarations, identifiers of those declarations,
+-- and the (global) identifiers those declarations depend on
 tInfSPLGraph :: AST.SPL -> [(AST.Decl, String, [String])]
 tInfSPLGraph decls =
     let globalVars = map declIdentifier decls in
@@ -707,12 +709,21 @@ instance Dependencies AST.Decl where
     dependencies globalDefs (AST.DeclF decl, _) = dependencies globalDefs decl
 
 instance Dependencies AST.VarDecl where
-    dependencies globalDefs (AST.VarDeclTyped _ i e, _) = dependencies [g | g <- globalDefs, not (g == idName i)] e
-    dependencies globalDefs (AST.VarDeclUntyped i e, _) = dependencies [g | g <- globalDefs, not (g == idName i)] e
+    dependencies globalDefs (AST.VarDeclTyped _ i e, _) =
+        let (globalDefs', deps) = dependencies globalDefs e in
+          ([g | g <- globalDefs', g /= idName i], deps)
+    dependencies globalDefs (AST.VarDeclUntyped i e, _) =
+        let (globalDefs', deps) = dependencies globalDefs e in
+          ([g | g <- globalDefs, g /= idName i], deps)
 
 instance Dependencies AST.FunDecl where
-    dependencies globalDefs (AST.FunDeclTyped i is _ ss, _) = dependencies [g | g <- globalDefs, not (elem g (idName i : map idName is))] ss
-    dependencies globalDefs (AST.FunDeclUntyped i is ss, _) = dependencies [g | g <- globalDefs, not (elem g (idName i : map idName is))] ss
+    dependencies globalDefs (AST.FunDeclTyped i is _ ss, _) =
+        let (globalDefs', deps) = dependencies [g | g <- globalDefs, g `notElem` map idName is] ss in
+            ([g | g <- globalDefs', g /= idName i], deps)
+
+    dependencies globalDefs (AST.FunDeclUntyped i is ss, _) =
+        let (globalDefs', deps) = dependencies [g | g <- globalDefs, g `notElem` map idName is] ss in
+            ([g | g <- globalDefs', g /= idName i], deps)
 
 instance Dependencies AST.Statement where
     dependencies globalDefs _ = (globalDefs, globalDefs)
