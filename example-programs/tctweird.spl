@@ -14,6 +14,9 @@ g2() { return 1; }
 h() { return 'a'; }
 */
 
+f1() { return 1; }
+f2() { return f1(); }
+
 /*
 f() { return f(); } 
 test () { var a = f() : []; return f() + 1; }
@@ -25,8 +28,59 @@ test () { var a = f() : []; return 1 : a; }
 */
 
 /* Should throw an error! Variables are not allowed to have polymorphic type. */
+/*
 var x = f();
 f() { return x; }
+*/
+
+/* Should throw an error! Two-fold problem: it's a polymorphicly typed variable, and it makes no sense for a variable to "call" itself (at this point it's not defined yet) as it's not a function */
+/*
+var x = x;
+*/
+
+/*
+var x = x();
+*/
+
+/*
+var a = 1;
+f (a) { return a : 'c' : []; }
+*/
+
+/* g is -> Void, so return g(); should be illegal */
+/*
+f() { return g(); }
+g() { f(); }
+*/
+
+/*
+f() { return 2; return True; }
+*/
+
+/*
+f(x) :: a -> a { a b = x; return b; }
+*/
+
+/* Types do not unify, TInt and TBool */
+/*
+var ref = [];
+prepend(lst, x) { lst = ref; lst = x:lst; }
+main() { prepend([],1); prepend([],True); }
+*/
+
+/*
+var x = 1;
+var y = x(); 
+*/
+
+/*
+var ones = 1:ones;
+*/
+
+/*
+var flip = 0:flop;
+var flop = 1:flip;
+*/
 
 /*
 f() { return f(); }
