@@ -24,6 +24,7 @@ import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Stack as Stack
 import qualified Data.Graph as Graph
+import qualified Data.Graph.SCC as Graph.SCC
 
 import Control.Monad.Except
 import Control.Monad.Reader
@@ -362,10 +363,10 @@ tInfExpr (AST.ExprIdentifierField id fields, _) = do
 tInfExpr (AST.ExprFunCall id args, _) = do
     tReturn <- newTypeVar (idName id ++ "_ret")
     (s1, t1) <- tInfId id
-    (s2, ts) <- tInfExprs args
+    (s2, ts) <- tInfExprs args -- todo: create fresh vars for args? as in, context?
     s <- mgu (apply s2 t1) (TFunction ts tReturn)
 
-    return (s2 `composeSubstitution` s1, apply s tReturn)
+    return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s tReturn)
     --if length args == 0
         --then return (s `composeSubstitution` s2 `composeSubstitution` s1, apply s tReturn)
         --else return (s2 `composeSubstitution` s1, apply s tReturn)
@@ -451,11 +452,14 @@ tInfBinaryOp (AST.BinaryOpMod, p) e1 e2 = tInfBinaryOp (AST.BinaryOpPlus, p) e1 
 tInfSPL :: AST.SPL -> TInf (AST.SPL, Substitution, Type)
 tInfSPL decls = do
     ctx <- ask
-    let graph = tInfSPLGraph decls
-    throwError $ show graph
+    let (graph, vertexToEdge, keyToVertex) = Graph.graphFromEdges $ tInfSPLGraph decls
+    let scc = reverse $ fst $ Graph.SCC.scc graph -- Calculate strongly connected components in reverse topological order ([(sccId, [keys])])
+    -- Calculate list of strongly connected declarations and the original location of the declarations
+    -- [[(originalIndex, decl)]]
+    let sccDecls = map (map (\vertex -> (vertex, (\(decl, _, _) -> decl) $ vertexToEdge vertex)) . snd) scc
     let initCtx = Stack.stackPush ctx emptyCtx -- Create top scope
-    ctx' <- addGlobalsToCtx initCtx decls -- Add globals to to scope
-    local (\ _ -> ctx') (tInfSPL' decls)
+    -- ctx' <- addGlobalsToCtx initCtx decls -- Add globals to to scope
+    local (const initCtx) (tInfSPL' decls sccDecls)
 
     where
         addGlobalsToCtx :: ScopedTypeCtx -> AST.SPL -> TInf ScopedTypeCtx
@@ -470,7 +474,55 @@ tInfSPL decls = do
                 --(AST.DeclF (AST.FunDeclUntyped i _ _, _), _) -> return $ add ctx' (idName i) (generalize ctx' typeVar)
                 (AST.DeclF (AST.FunDeclTyped i _ _ _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
                 (AST.DeclF (AST.FunDeclUntyped i _ _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
+        addGlobalToCtx :: ScopedTypeCtx -> AST.Decl -> Type -> TInf ScopedTypeCtx
+        addGlobalToCtx ctx decl t =
+            case decl of
+                (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> return $ add ctx (idName i) (Scheme [] t)
+                (AST.DeclV (AST.VarDeclUntyped i _, _), _) -> return $ add ctx (idName i) (Scheme [] t)
+                (AST.DeclF (AST.FunDeclTyped i _ _ _, _), _) -> return $ add ctx (idName i) (generalize ctx t)
+                (AST.DeclF (AST.FunDeclUntyped i _ _, _), _) -> return $ add ctx (idName i) (generalize ctx t)
+        insertIntoSPL :: AST.SPL -> Int -> AST.Decl -> AST.SPL
+        insertIntoSPL spl idx decl =
+            let (start, _:end) = splitAt idx spl in
+                start ++ decl : end
+        -- |Perform type inference for each strongly connected component
+        tInfSPL' :: AST.SPL -> [[(Int, AST.Decl)]] -> TInf (AST.SPL, Substitution, Type)
+        tInfSPL' spl [] = return (spl, nullSubstitution, TVoid)
+        tInfSPL' spl (scc:sccs) = do
+            ctx <- ask
+            let decls = map snd scc
+            ctx' <- addGlobalsToCtx ctx decls
+            (_, typedDecls) <- local (const ctx') (tInfSPL'' scc)
+            (spl', ctx'') <- generalizeSCC spl ctx typedDecls
+            local (const ctx'') (tInfSPL' spl' sccs)
+        -- |Perform type inference for declaration within a strongly connected component
+        tInfSPL'' :: [(Int, AST.Decl)] -> TInf (Substitution, [(Int, AST.Decl, Type)])
+        tInfSPL'' [] = return (nullSubstitution, [])
+        tInfSPL'' ((idx, decl):decls) = do
+            -- Infer type of the declaration
+            (decl', s1, varName, t1) <- tInfDecl decl
 
+            -- Get the type scheme of the variable/function we just declared and unify it with the actual type
+            (Scheme _ t1') <- getScheme varName
+            s2 <- mgu t1' t1
+
+            -- Perform type inference for the next declarations
+            (s3, t2) <- tInfSPL'' decls
+
+            return (
+                        s3 `composeSubstitution` s2 `composeSubstitution` s1,
+                        (idx, apply (s3 `composeSubstitution` s2) decl', apply (s3 `composeSubstitution` s2) t1) : t2
+                    )
+
+        generalizeSCC :: AST.SPL -> ScopedTypeCtx -> [(Int, AST.Decl, Type)] -> TInf (AST.SPL, ScopedTypeCtx)
+        generalizeSCC spl ctx [] = return (spl, ctx)
+        generalizeSCC spl ctx ((idx, decl, t):decls) = do
+            s <- substitution
+            ctx' <- addGlobalToCtx ctx decl t
+            let spl' = insertIntoSPL spl idx decl
+            generalizeSCC spl' ctx' decls
+
+{-
         tInfSPL' :: AST.SPL -> TInf (AST.SPL, Substitution, Type)
         tInfSPL' [] = return ([], nullSubstitution, TVoid)
         tInfSPL' (decl:decls) = do
@@ -492,6 +544,7 @@ tInfSPL decls = do
                         s3 `composeSubstitution` s2 `composeSubstitution` s1,
                         t2
                     )
+-}
 
 -- |Find the graph of (global) dependencies; a list of tuples of declarations, identifiers of those declarations,
 -- and the (global) identifiers those declarations depend on
