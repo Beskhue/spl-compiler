@@ -11,8 +11,7 @@ import TypeSystem.Checker as Checker
 parseAndCheckDet = Checker.checkDet . SPLParser.parseDet . Lexer.lexDet "test"
 
 expr = SPLParser.parseDet' SPLParser.pExpression . Lexer.lexDet "test"
-emptyTInfExpr = Checker.typeInference Checker.tInfExpr
-onlyTypeEmptyTInfExpr = Checker.onlyType . emptyTInfExpr
+onlyTypeEmptyTInfExpr = Checker.typeInferenceExpr Checker.tInfExprTyped
 
 spec_Checker :: Spec
 spec_Checker = do
