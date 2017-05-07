@@ -225,7 +225,7 @@ generalize ctx t =
 -- |The type inference state consists of the fresh type name generator state and the current type substitution
 data TInfState = TInfState { tInfSupply :: Int,
                              tInfSubstitution :: Substitution,
-                             astAnnotation :: Map.Map Pos.Pos Type}
+                             astAnnotation :: ASTAnnotation}
                  deriving (Show)
 
 type TInf a = ExceptT String (ReaderT ScopedTypeCtx (State TInfState)) a
