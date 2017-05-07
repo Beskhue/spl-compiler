@@ -407,8 +407,14 @@ tInfExpr t (AST.ExprTuple e1 e2, p) = do
     tInfExpr t1 e1
     tInfExpr t2 e2
     void $ mgu (Just p) t (TTuple t1 t2)
-tInfExpr t (AST.ExprUnaryOp op e, _) = tInfUnaryOp t op e
-tInfExpr t (AST.ExprBinaryOp op e1 e2, _) = tInfBinaryOp t op e1 e2
+tInfExpr t (AST.ExprUnaryOp op e, p) = do
+    tInfUnaryOp t op e
+    t' <- substitute t
+    annotate p t'
+tInfExpr t (AST.ExprBinaryOp op e1 e2, p) = do
+    tInfBinaryOp t op e1 e2
+    t' <- substitute t
+    annotate p t'
 
 -- |Perform type inference on a list of AST expressions
 tInfExprs :: [Type] -> [AST.Expression] -> TInf ()
