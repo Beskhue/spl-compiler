@@ -513,7 +513,7 @@ tInfSPL decls = do
             typedDecls <- tInfSCC decls
 
             s <- substitution
-            return $ (idx, apply s decl', apply s t1) : typedDecls
+            return $ (idx, rewrite s decl', apply s t1) : typedDecls
         -- |Add the types of the global declarations in the SCC to the context,
         -- and update the AST (generalizes the types of function declaration).
         finalizeSCC :: AST.SPL -> ScopedTypeCtx -> [(Int, AST.Decl, Type)] -> TInf (AST.SPL, ScopedTypeCtx)
@@ -550,7 +550,7 @@ tInfVarDecl decl =
                     ++ ". Expected type: " ++ AST.prettyPrint (translateType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateType p t) ++ ".")
             if apply s' annotatedT == applyOnlyRename s' annotatedT
-                then return (apply s' ast, s' `composeSubstitution` s, str, apply s' t)
+                then return (rewrite s' ast, s' `composeSubstitution` s, str, apply s' t)
                 else throwError $ "Expected type is more general than the inferred type"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateType p t) ++ "."
@@ -573,7 +573,7 @@ tInfFunDecl decl =
                     ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateFunType p t) ++ ".")
             if apply s' annotatedT == applyOnlyRename s' annotatedT
-                then return (apply s' ast, s' `composeSubstitution` s, str, apply s' t)
+                then return (rewrite s' ast, s' `composeSubstitution` s, str, apply s' t)
                 else throwError $ "Expected type is more general than the inferred type"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateFunType p t) ++ "."
@@ -626,14 +626,14 @@ tInfStatements (statement:statements) = do
         if returnsValue
             then
                 case t2 of
-                    TVoid -> return (apply s2 statement' : statements', s2 `composeSubstitution` s1, apply s2 t1)
+                    TVoid -> return (rewrite s2 statement' : statements', s2 `composeSubstitution` s1, apply s2 t1)
                     _ -> do
                         s <- mgu (apply s2 t1) t2
                         return (
-                            apply (s `composeSubstitution` s2) statement' : statements',
+                            rewrite (s `composeSubstitution` s2) statement' : statements',
                             s `composeSubstitution` s2 `composeSubstitution` s1,
                             apply s t2)
-            else return (apply s2 statement' : statements', s2 `composeSubstitution` s1, t2))
+            else return (rewrite s2 statement' : statements', s2 `composeSubstitution` s1, t2))
 
 tInfStatement :: AST.Statement -> TInf (AST.Statement, Substitution, String, Type, Bool)
 tInfStatement (AST.StmtVarDecl decl, p) = do
@@ -661,19 +661,19 @@ tInfStatement (AST.StmtIfElse expr st1 st2, p) = do
             then do
                 s' <- mgu st1 st2
                 return (
-                    (AST.StmtIfElse expr (apply (s' `composeSubstitution` s2') st1') (apply s' st2'), p),
+                    (AST.StmtIfElse expr (rewrite (s' `composeSubstitution` s2') st1') (rewrite s' st2'), p),
                     s' `composeSubstitution` s2' `composeSubstitution` s1' `composeSubstitution` s `composeSubstitution` es,
                     "",
                     apply s' st2,
                     True)
             else return (
-                (AST.StmtIfElse expr (apply s2' st1') st2', p),
+                (AST.StmtIfElse expr (rewrite s2' st1') st2', p),
                 s2' `composeSubstitution` s1' `composeSubstitution` s `composeSubstitution` es,
                 "",
                 apply s2' st1,
                 True)
         else return (
-            (AST.StmtIfElse expr (apply s2' st1') st2', p),
+            (AST.StmtIfElse expr (rewrite s2' st1') st2', p),
             s2' `composeSubstitution` s1' `composeSubstitution` s `composeSubstitution` es,
             "",
             apply s2' st1,
@@ -836,61 +836,49 @@ rTranslateFunType :: AST.FunType -> Type
 rTranslateFunType (AST.FunTypeVoid args, _)  = TFunction (map rTranslateType args) TVoid
 rTranslateFunType (AST.FunType args body, _) = TFunction (map rTranslateType args) (rTranslateType body)
 
-instance Types AST.Type where
-    freeTypeVars t = freeTypeVars $ rTranslateType t
-    apply s (t, p) = translateType p $ apply s $ rTranslateType (t, p)
+-- |Class to rewrite the AST with type substitutions
+class RewriteAST a where
+    rewrite :: Substitution -> a -> a
 
-    applyOnlyRename = undefined
+instance RewriteAST a => RewriteAST [a] where
+    rewrite s = map (rewrite s)
 
-instance Types AST.Decl where
-    freeTypeVars = undefined
-    apply s (AST.DeclV v, p) = (AST.DeclV (apply s v), p)
-    apply s (AST.DeclF f, p) = (AST.DeclF (apply s f), p)
-    applyOnlyRename = undefined
+instance RewriteAST AST.Type where
+    rewrite s (t, p) = translateType p $ apply s $ rTranslateType (t, p)
 
-instance Types AST.VarDecl where
-    freeTypeVars = undefined
-    apply s (AST.VarDeclTyped t i e, p) = (AST.VarDeclTyped (apply s t) (apply s i) (apply s e), p)
-    apply s (AST.VarDeclUntyped i e, p) = (AST.VarDeclUntyped (apply s i) (apply s e), p)
-    applyOnlyRename = undefined
+instance RewriteAST AST.Decl where
+    rewrite s (AST.DeclV v, p) = (AST.DeclV (rewrite s v), p)
+    rewrite s (AST.DeclF f, p) = (AST.DeclF (rewrite s f), p)
 
-instance Types AST.FunDecl where
-    freeTypeVars = undefined
-    apply s (AST.FunDeclTyped i is t ss, p) = (AST.FunDeclTyped (apply s i) (apply s is) (apply s t) (apply s ss), p)
-    apply s (AST.FunDeclUntyped i is ss, p) = (AST.FunDeclUntyped (apply s i) (apply s is) (apply s ss), p)
-    applyOnlyRename = undefined
+instance RewriteAST AST.VarDecl where
+    rewrite s (AST.VarDeclTyped t i e, p) = (AST.VarDeclTyped (rewrite s t) (rewrite s i) (rewrite s e), p)
+    rewrite s (AST.VarDeclUntyped i e, p) = (AST.VarDeclUntyped (rewrite s i) (rewrite s e), p)
 
-instance Types AST.FunType where
-    freeTypeVars = undefined
-    apply s (AST.FunType ts t, p) = (AST.FunType (apply s ts) (apply s t), p)
-    apply s (AST.FunTypeVoid ts, p) = (AST.FunTypeVoid (apply s ts), p)
-    applyOnlyRename = undefined
+instance RewriteAST AST.FunDecl where
+    rewrite s (AST.FunDeclTyped i is t ss, p) = (AST.FunDeclTyped (rewrite s i) (rewrite s is) (rewrite s t) (rewrite s ss), p)
+    rewrite s (AST.FunDeclUntyped i is ss, p) = (AST.FunDeclUntyped (rewrite s i) (rewrite s is) (rewrite s ss), p)
 
-instance Types AST.Statement where
-    freeTypeVars = undefined
-    apply s (AST.StmtVarDecl v, p) = (AST.StmtVarDecl (apply s v), p)
-    apply s (AST.StmtIf e st, p) = (AST.StmtIf (apply s e) (apply s st), p)
-    apply s (AST.StmtIfElse e st1 st2, p) = (AST.StmtIfElse (apply s e) (apply s st1) (apply s st2), p)
-    apply s (AST.StmtWhile e st, p) = (AST.StmtWhile (apply s e) (apply s st), p)
-    apply s (AST.StmtBlock sts, p) = (AST.StmtBlock (apply s sts), p)
-    apply s (AST.StmtAssignment i e, p) = (AST.StmtAssignment (apply s i) (apply s e), p)
-    apply s (AST.StmtAssignmentField i f e, p) = (AST.StmtAssignmentField (apply s i) (apply s f) (apply s e), p)
-    apply s (AST.StmtFunCall i es, p) = (AST.StmtFunCall (apply s i) (apply s es), p)
-    apply s (AST.StmtReturn e, p) = (AST.StmtReturn (apply s e), p)
-    apply _ st = st
-    applyOnlyRename = undefined
+instance RewriteAST AST.FunType where
+    rewrite s (AST.FunType ts t, p) = (AST.FunType (rewrite s ts) (rewrite s t), p)
+    rewrite s (AST.FunTypeVoid ts, p) = (AST.FunTypeVoid (rewrite s ts), p)
 
-instance Types AST.Field where
-    freeTypeVars = undefined
-    apply _ f = f
-    applyOnlyRename = undefined
+instance RewriteAST AST.Statement where
+    rewrite s (AST.StmtVarDecl v, p) = (AST.StmtVarDecl (rewrite s v), p)
+    rewrite s (AST.StmtIf e st, p) = (AST.StmtIf (rewrite s e) (rewrite s st), p)
+    rewrite s (AST.StmtIfElse e st1 st2, p) = (AST.StmtIfElse (rewrite s e) (rewrite s st1) (rewrite s st2), p)
+    rewrite s (AST.StmtWhile e st, p) = (AST.StmtWhile (rewrite s e) (rewrite s st), p)
+    rewrite s (AST.StmtBlock sts, p) = (AST.StmtBlock (rewrite s sts), p)
+    rewrite s (AST.StmtAssignment i e, p) = (AST.StmtAssignment (rewrite s i) (rewrite s e), p)
+    rewrite s (AST.StmtAssignmentField i f e, p) = (AST.StmtAssignmentField (rewrite s i) (rewrite s f) (rewrite s e), p)
+    rewrite s (AST.StmtFunCall i es, p) = (AST.StmtFunCall (rewrite s i) (rewrite s es), p)
+    rewrite s (AST.StmtReturn e, p) = (AST.StmtReturn (rewrite s e), p)
+    rewrite _ st = st
 
-instance Types AST.Expression where
-    freeTypeVars = undefined
-    apply _ e = e
-    applyOnlyRename = undefined
+instance RewriteAST AST.Field where
+    rewrite _ f = f
 
-instance Types AST.Identifier where
-    freeTypeVars = undefined
-    apply _ i = i
-    applyOnlyRename = undefined
+instance RewriteAST AST.Expression where
+    rewrite _ e = e
+
+instance RewriteAST AST.Identifier where
+    rewrite _ i = i
