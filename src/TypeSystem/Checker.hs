@@ -37,16 +37,16 @@ import qualified Data.AST as AST
 
 ------------------------------------------------------------------------------------------------------------------------
 
-check :: AST.SPL -> Either String AST.SPL
+check :: AST.SPL -> Either String (AST.SPL, ASTAnnotation)
 check spl = res
     where
         (res, _) = runTInf $ tInfSPL spl
 
-checkDet :: AST.SPL -> AST.SPL
+checkDet :: AST.SPL -> (AST.SPL, ASTAnnotation)
 checkDet spl =
     case check spl of
         Left err -> Trace.trace (show err) undefined
-        Right spl -> spl
+        Right spl' -> spl'
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -225,7 +225,7 @@ generalize ctx t =
 -- |The type inference state consists of the fresh type name generator state and the current type substitution
 data TInfState = TInfState { tInfSupply :: Int,
                              tInfSubstitution :: Substitution,
-                             posToType :: Map.Map Pos.Pos Type}
+                             astAnnotation :: Map.Map Pos.Pos Type}
                  deriving (Show)
 
 type TInf a = ExceptT String (ReaderT ScopedTypeCtx (State TInfState)) a
@@ -239,7 +239,7 @@ runTInf t = runState (runReaderT (runExceptT t) initTInfCtx) initTInfState
         initTInfCtx = emptyScopedCtx
         initTInfState = TInfState { tInfSupply = 0,
                                     tInfSubstitution = Map.empty,
-                                    posToType = Map.empty}
+                                    astAnnotation = Map.empty}
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -272,7 +272,7 @@ instantiate (Scheme vars t) = do
 annotate :: Pos.Pos -> Type -> TInf ()
 annotate p t = do
     s <- get
-    put s {posToType = Map.insert p t (posToType s) }
+    put s {astAnnotation = Map.insert p t (astAnnotation s) }
 
 -- |Bind a type variable to a type, but don't bind to itself, and make sure the free type variable occurs
 varBind :: String -> Type -> TInf Substitution
@@ -468,7 +468,7 @@ tInfBinaryOp t (AST.BinaryOpMod, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p)
 
 -- |Perform type inference on the global SPL declarations. Rewrite the AST such that all variables are typed as
 -- completely as possible.
-tInfSPL :: AST.SPL -> TInf AST.SPL
+tInfSPL :: AST.SPL -> TInf (AST.SPL, ASTAnnotation)
 tInfSPL decls = do
     ctx <- ask
     let deps = tInfSPLGraph decls
@@ -478,7 +478,10 @@ tInfSPL decls = do
     -- [[(originalIndex, decl)]]
     let sccDecls = map (map (\vertex -> (\d@(decl, _, _) -> (case elemIndex d deps of Just idx -> idx, decl)) $ vertexToEdge vertex) . snd) scc
     let initCtx = Stack.stackPush ctx builtInCtx -- Create top scope
-    local (const initCtx) (tInfSCCs decls sccDecls)
+    spl <- local (const initCtx) (tInfSCCs decls sccDecls)
+    s <- substitution
+    st <- get
+    return (spl, apply s (astAnnotation st))
     where
         addGlobalsToCtx :: ScopedTypeCtx -> AST.SPL -> TInf ScopedTypeCtx
         addGlobalsToCtx ctx [] = return ctx
