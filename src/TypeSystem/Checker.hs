@@ -458,9 +458,7 @@ tInfSPL decls = do
     -- [[(originalIndex, decl)]]
     let sccDecls = map (map (\vertex -> (vertex, (\(decl, _, _) -> decl) $ vertexToEdge vertex)) . snd) scc
     let initCtx = Stack.stackPush ctx emptyCtx -- Create top scope
-    -- ctx' <- addGlobalsToCtx initCtx decls -- Add globals to to scope
     local (const initCtx) (tInfSCCs decls sccDecls)
-
     where
         addGlobalsToCtx :: ScopedTypeCtx -> AST.SPL -> TInf ScopedTypeCtx
         addGlobalsToCtx ctx [] = return ctx
