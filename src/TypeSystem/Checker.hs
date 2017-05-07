@@ -492,27 +492,25 @@ tInfSPL decls = do
             ctx <- ask
             let decls = map snd scc
             ctx' <- addGlobalsToCtx ctx decls
-            (_, typedDecls) <- local (const ctx') (tInfSPL'' scc)
+            typedDecls <- local (const ctx') (tInfSPL'' scc)
             (spl', ctx'') <- generalizeSCC spl ctx typedDecls
             local (const ctx'') (tInfSPL' spl' sccs)
         -- |Perform type inference for declaration within a strongly connected component
-        tInfSPL'' :: [(Int, AST.Decl)] -> TInf (Substitution, [(Int, AST.Decl, Type)])
-        tInfSPL'' [] = return (nullSubstitution, [])
+        tInfSPL'' :: [(Int, AST.Decl)] -> TInf [(Int, AST.Decl, Type)]
+        tInfSPL'' [] = return []
         tInfSPL'' ((idx, decl):decls) = do
             -- Infer type of the declaration
-            (decl', s1, varName, t1) <- tInfDecl decl
+            (decl', _, varName, t1) <- tInfDecl decl
 
             -- Get the type scheme of the variable/function we just declared and unify it with the actual type
             (Scheme _ t1') <- getScheme varName
-            s2 <- mgu t1' t1
+            mgu t1' t1
 
             -- Perform type inference for the next declarations
-            (s3, t2) <- tInfSPL'' decls
-
-            return (
-                        s3 `composeSubstitution` s2 `composeSubstitution` s1,
-                        (idx, apply (s3 `composeSubstitution` s2) decl', apply (s3 `composeSubstitution` s2) t1) : t2
-                    )
+            typedDecls <- tInfSPL'' decls
+            
+            s <- substitution
+            return $ (idx, apply s decl', apply s t1) : typedDecls
 
         generalizeSCC :: AST.SPL -> ScopedTypeCtx -> [(Int, AST.Decl, Type)] -> TInf (AST.SPL, ScopedTypeCtx)
         generalizeSCC spl ctx [] = return (spl, ctx)
