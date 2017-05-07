@@ -508,7 +508,7 @@ tInfSPL decls = do
 
             -- Perform type inference for the next declarations
             typedDecls <- tInfSPL'' decls
-            
+
             s <- substitution
             return $ (idx, apply s decl', apply s t1) : typedDecls
 
@@ -519,30 +519,6 @@ tInfSPL decls = do
             ctx' <- addGlobalToCtx ctx decl t
             let spl' = insertIntoSPL spl idx decl
             generalizeSCC spl' ctx' decls
-
-{-
-        tInfSPL' :: AST.SPL -> TInf (AST.SPL, Substitution, Type)
-        tInfSPL' [] = return ([], nullSubstitution, TVoid)
-        tInfSPL' (decl:decls) = do
-            -- Infer type of the declaration
-            (decl', s1, varName, t1) <- tInfDecl decl
-
-            -- Get the type scheme of the variable/function we just declared and unify it with the actual type
-            (Scheme _ t1') <- getScheme varName
-            s2 <- mgu t1' t1
-
-            -- Get the next declarations, using the unified type scheme
-            (decls', s3, t2) <- tInfSPL' decls
-
-            -- Infer type for this declaration again, using the "back-flown" information from the next declarations
-            --(declPost, s1Post, varNamePost, t1Post) <- tInfDecl (apply s3 ctx) decl
-
-            return (
-                        apply (s3 `composeSubstitution` s2 ) decl' : decls',
-                        s3 `composeSubstitution` s2 `composeSubstitution` s1,
-                        t2
-                    )
--}
 
 -- |Find the graph of (global) dependencies; a list of tuples of declarations, identifiers of those declarations,
 -- and the (global) identifiers those declarations depend on
