@@ -10,7 +10,7 @@ Stability: experimental
 module Data.Pos where
 
 data Pos = Pos { sourceName :: String, line :: !Int, column :: !Int }
-           deriving (Eq)
+           deriving (Ord, Eq)
 
 instance Show Pos where
     show (Pos sourceName line column)
