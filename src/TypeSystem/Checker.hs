@@ -160,6 +160,13 @@ emptyMap = Map.empty
 emptyCtx :: TypeCtx
 emptyCtx = TypeCtx emptyMap
 
+builtInCtx :: TypeCtx
+builtInCtx = TypeCtx $ Map.fromAscList [
+    ("print", let t = TVar "a" in Scheme ["a"] (TFunction [t, t] TVoid)),
+    ("isEmpty", let t = TList (TVar "a") in Scheme ["a"] (TFunction [t] TBool)),
+    ("length", let t = TList (TVar "a") in Scheme ["a"] (TFunction [t] TInt))
+    ]
+
 emptyScopedCtx :: ScopedTypeCtx
 emptyScopedCtx = Stack.stackNew
 
@@ -457,7 +464,7 @@ tInfSPL decls = do
     -- Calculate list of strongly connected declarations and the original location of the declarations
     -- [[(originalIndex, decl)]]
     let sccDecls = map (map (\vertex -> (vertex, (\(decl, _, _) -> decl) $ vertexToEdge vertex)) . snd) scc
-    let initCtx = Stack.stackPush ctx emptyCtx -- Create top scope
+    let initCtx = Stack.stackPush ctx builtInCtx -- Create top scope
     local (const initCtx) (tInfSCCs decls sccDecls)
     where
         addGlobalsToCtx :: ScopedTypeCtx -> AST.SPL -> TInf ScopedTypeCtx
