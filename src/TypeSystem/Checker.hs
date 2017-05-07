@@ -459,7 +459,7 @@ tInfSPL decls = do
     let sccDecls = map (map (\vertex -> (vertex, (\(decl, _, _) -> decl) $ vertexToEdge vertex)) . snd) scc
     let initCtx = Stack.stackPush ctx emptyCtx -- Create top scope
     -- ctx' <- addGlobalsToCtx initCtx decls -- Add globals to to scope
-    local (const initCtx) (tInfSPL' decls sccDecls)
+    local (const initCtx) (tInfSCCs decls sccDecls)
 
     where
         addGlobalsToCtx :: ScopedTypeCtx -> AST.SPL -> TInf ScopedTypeCtx
@@ -486,19 +486,19 @@ tInfSPL decls = do
             let (start, _:end) = splitAt idx spl in
                 start ++ decl : end
         -- |Perform type inference for each strongly connected component
-        tInfSPL' :: AST.SPL -> [[(Int, AST.Decl)]] -> TInf (AST.SPL, Substitution, Type)
-        tInfSPL' spl [] = return (spl, nullSubstitution, TVoid)
-        tInfSPL' spl (scc:sccs) = do
+        tInfSCCs :: AST.SPL -> [[(Int, AST.Decl)]] -> TInf (AST.SPL, Substitution, Type)
+        tInfSCCs spl [] = return (spl, nullSubstitution, TVoid)
+        tInfSCCs spl (scc:sccs) = do
             ctx <- ask
             let decls = map snd scc
             ctx' <- addGlobalsToCtx ctx decls
-            typedDecls <- local (const ctx') (tInfSPL'' scc)
+            typedDecls <- local (const ctx') (tInfSCC scc)
             (spl', ctx'') <- generalizeSCC spl ctx typedDecls
-            local (const ctx'') (tInfSPL' spl' sccs)
+            local (const ctx'') (tInfSCCs spl' sccs)
         -- |Perform type inference for declaration within a strongly connected component
-        tInfSPL'' :: [(Int, AST.Decl)] -> TInf [(Int, AST.Decl, Type)]
-        tInfSPL'' [] = return []
-        tInfSPL'' ((idx, decl):decls) = do
+        tInfSCC :: [(Int, AST.Decl)] -> TInf [(Int, AST.Decl, Type)]
+        tInfSCC [] = return []
+        tInfSCC ((idx, decl):decls) = do
             -- Infer type of the declaration
             (decl', _, varName, t1) <- tInfDecl decl
 
@@ -507,7 +507,7 @@ tInfSPL decls = do
             mgu t1' t1
 
             -- Perform type inference for the next declarations
-            typedDecls <- tInfSPL'' decls
+            typedDecls <- tInfSCC decls
 
             s <- substitution
             return $ (idx, apply s decl', apply s t1) : typedDecls
