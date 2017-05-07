@@ -493,7 +493,7 @@ tInfSPL decls = do
             let decls = map snd scc
             ctx' <- addGlobalsToCtx ctx decls
             typedDecls <- local (const ctx') (tInfSCC scc)
-            (spl', ctx'') <- generalizeSCC spl ctx typedDecls
+            (spl', ctx'') <- finalizeSCC spl ctx typedDecls
             local (const ctx'') (tInfSCCs spl' sccs)
         -- |Perform type inference for declaration within a strongly connected component
         tInfSCC :: [(Int, AST.Decl)] -> TInf [(Int, AST.Decl, Type)]
@@ -511,14 +511,15 @@ tInfSPL decls = do
 
             s <- substitution
             return $ (idx, apply s decl', apply s t1) : typedDecls
-
-        generalizeSCC :: AST.SPL -> ScopedTypeCtx -> [(Int, AST.Decl, Type)] -> TInf (AST.SPL, ScopedTypeCtx)
-        generalizeSCC spl ctx [] = return (spl, ctx)
-        generalizeSCC spl ctx ((idx, decl, t):decls) = do
+        -- |Add the types of the global declarations in the SCC to the context,
+        -- and update the AST (generalizes the types of function declaration).
+        finalizeSCC :: AST.SPL -> ScopedTypeCtx -> [(Int, AST.Decl, Type)] -> TInf (AST.SPL, ScopedTypeCtx)
+        finalizeSCC spl ctx [] = return (spl, ctx)
+        finalizeSCC spl ctx ((idx, decl, t):decls) = do
             s <- substitution
             ctx' <- addGlobalToCtx ctx decl t
             let spl' = insertIntoSPL spl idx decl
-            generalizeSCC spl' ctx' decls
+            finalizeSCC spl' ctx' decls
 
 -- |Find the graph of (global) dependencies; a list of tuples of declarations, identifiers of those declarations,
 -- and the (global) identifiers those declarations depend on
