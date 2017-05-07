@@ -1,3 +1,36 @@
+/*
 var g = test();
 test () { return g; }
 test2 (b) { var a = test() + b; }
+*/
+
+/*
+f1() { return f2(); }
+f2() { return f1(); }
+
+g1() { return g2(); }
+g2() { return 1; }
+
+h() { return 'a'; }
+*/
+
+/*
+f() { return f(); } 
+test () { var a = f() : []; return f() + 1; }
+*/
+
+/*
+f() { return f(); } 
+test () { var a = f() : []; return 1 : a; }
+*/
+
+/* Should throw an error! Variables are not allowed to have polymorphic type. */
+var x = f();
+f() { return x; }
+
+/*
+f() { return f(); }
+g() { return f(); }
+h() { return g(); }
+i() { return h() + 1; }
+*/
