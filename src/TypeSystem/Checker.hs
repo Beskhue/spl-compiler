@@ -25,6 +25,7 @@ import qualified Data.Set as Set
 import qualified Data.Stack as Stack
 import qualified Data.Graph as Graph
 import qualified Data.Graph.SCC as Graph.SCC
+import Data.List (elemIndex)
 
 import Control.Monad
 import Control.Monad.Except
@@ -440,11 +441,12 @@ tInfBinaryOp t (AST.BinaryOpMod, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p)
 tInfSPL :: AST.SPL -> TInf AST.SPL
 tInfSPL decls = do
     ctx <- ask
-    let (graph, vertexToEdge, keyToVertex) = Graph.graphFromEdges $ tInfSPLGraph decls
+    let deps = tInfSPLGraph decls
+    let (graph, vertexToEdge, keyToVertex) = Graph.graphFromEdges deps
     let scc = reverse $ fst $ Graph.SCC.scc graph -- Calculate strongly connected components in reverse topological order ([(sccId, [keys])])
     -- Calculate list of strongly connected declarations and the original location of the declarations
     -- [[(originalIndex, decl)]]
-    let sccDecls = map (map (\vertex -> (vertex, (\(decl, _, _) -> decl) $ vertexToEdge vertex)) . snd) scc
+    let sccDecls = map (map (\vertex -> (\d@(decl, _, _) -> (case elemIndex d deps of Just idx -> idx, decl)) $ vertexToEdge vertex) . snd) scc
     let initCtx = Stack.stackPush ctx builtInCtx -- Create top scope
     local (const initCtx) (tInfSCCs decls sccDecls)
     where
