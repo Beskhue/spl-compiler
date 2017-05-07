@@ -134,6 +134,20 @@ composeSubstitution s1 s2 = (Map.map (apply s1) s2) `Map.union` s1
 
 ------------------------------------------------------------------------------------------------------------------------
 
+-- |The AST annotation is a (finite) mapping from source code positions (corresponding with entities at those positions)
+-- to their types
+type ASTAnnotation = Map.Map Pos.Pos Type
+
+emptyAnnotation :: ASTAnnotation
+emptyAnnotation = Map.empty
+
+instance Types ASTAnnotation where
+    freeTypeVars = undefined
+    apply s m = Map.map (apply s) m
+    applyOnlyRename = undefined
+
+------------------------------------------------------------------------------------------------------------------------
+
 -- |A type context (or environment) is a mapping from term variables to type schemes
 newtype TypeCtx = TypeCtx (Map.Map String Scheme)
                   deriving (Show)
@@ -210,7 +224,8 @@ generalize ctx t =
 
 -- |The type inference state consists of the fresh type name generator state and the current type substitution
 data TInfState = TInfState { tInfSupply :: Int,
-                             tInfSubstitution :: Substitution}
+                             tInfSubstitution :: Substitution,
+                             posToType :: Map.Map Pos.Pos Type}
                  deriving (Show)
 
 type TInf a = ExceptT String (ReaderT ScopedTypeCtx (State TInfState)) a
@@ -223,7 +238,8 @@ runTInf t = runState (runReaderT (runExceptT t) initTInfCtx) initTInfState
     where
         initTInfCtx = emptyScopedCtx
         initTInfState = TInfState { tInfSupply = 0,
-                                    tInfSubstitution = Map.empty}
+                                    tInfSubstitution = Map.empty,
+                                    posToType = Map.empty}
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -253,6 +269,11 @@ instantiate (Scheme vars t) = do
 
 ------------------------------------------------------------------------------------------------------------------------
 
+annotate :: Pos.Pos -> Type -> TInf ()
+annotate p t = do
+    s <- get
+    put s {posToType = Map.insert p t (posToType s) }
+
 -- |Bind a type variable to a type, but don't bind to itself, and make sure the free type variable occurs
 varBind :: String -> Type -> TInf Substitution
 varBind u t
@@ -265,11 +286,17 @@ varBind u t
         return s
 
 -- |Unify two types (using the most general unifier)
-mgu :: Type -> Type -> TInf Substitution
-mgu t1 t2 = do
+mgu :: Maybe Pos.Pos -> Type -> Type -> TInf Substitution
+mgu p t1 t2 = do
     t1' <- substitute t1
     t2' <- substitute t2
-    mgu' t1' t2'
+    s <- mgu' t1' t2'
+    case p of
+        Nothing -> return s
+        Just p' -> do
+            t <- substitute t1
+            annotate p' t
+            return s
     where
     mgu' :: Type -> Type -> TInf Substitution
     mgu' (TVar u) t           = varBind u t
@@ -330,12 +357,12 @@ tInfId i = tInfVarName (idName i)
 
 -- |Perform type inference on an AST constant
 tInfConst :: Type -> AST.Constant -> TInf ()
-tInfConst t (AST.ConstBool _, _) = void $ mgu t TBool
-tInfConst t (AST.ConstInt _, _) = void $ mgu t TInt
-tInfConst t (AST.ConstChar _, _) = void $ mgu t TChar
-tInfConst t (AST.ConstEmptyList, _) = do
+tInfConst t (AST.ConstBool _, p) = void $ mgu (Just p) t TBool
+tInfConst t (AST.ConstInt _, p) = void $ mgu (Just p) t TInt
+tInfConst t (AST.ConstChar _, p) = void $ mgu (Just p) t TChar
+tInfConst t (AST.ConstEmptyList, p) = do
     tVar <- newTypeVar "a"
-    void $ mgu t (TList tVar)
+    void $ mgu (Just p) t (TList tVar)
 
 
 tInfExprTyped :: AST.Expression -> TInf Type
@@ -346,89 +373,86 @@ tInfExprTyped e = do
 
 -- |Perform type inference on an AST expression
 tInfExpr :: Type -> AST.Expression -> TInf ()
-tInfExpr t (AST.ExprIdentifier id, _) = do
+tInfExpr t (AST.ExprIdentifier id, p) = do
     t' <- tInfId id
-    void $ mgu t t'
+    void $ mgu (Just p) t t'
 tInfExpr t (AST.ExprIdentifierField id fields, _) = do
     t' <- tInfId id
     tTraverseFields t t' fields
     where
         tTraverseFields :: Type -> Type -> [AST.Field] -> TInf ()
-        tTraverseFields t t' [] = void $ mgu t t'
+        tTraverseFields t t' [] = void $ mgu Nothing t t'
         tTraverseFields t t' (field:fields) =
             case field of
-                (AST.FieldHd, _) -> do
+                (AST.FieldHd, p) -> do
                     tVar <- newTypeVar "fld"
-                    s <- mgu t' (TList tVar)
+                    s <- mgu (Just p) t' (TList tVar)
                     tTraverseFields t (apply s tVar) fields
-                (AST.FieldTl, _) -> do
+                (AST.FieldTl, p) -> do
                     tVar <- newTypeVar "fld"
-                    s <- mgu t' (TList tVar)
+                    s <- mgu (Just p) t' (TList tVar)
                     tTraverseFields t (apply s (TList tVar)) fields
-                (AST.FieldFst, _) -> undefined
-                (AST.FieldSnd, _) -> undefined
+                (AST.FieldFst, p) -> undefined
+                (AST.FieldSnd, p) -> undefined
 
-tInfExpr t (AST.ExprFunCall id args, _) = do
+tInfExpr t (AST.ExprFunCall id args, p) = do
     t1 <- tInfId id
     ts <- mapM (const $ newTypeVar "arg") args
-    mgu (TFunction ts t) t1
+    mgu (Just p) (TFunction ts t) t1
     tInfExprs ts args
 tInfExpr t (AST.ExprConstant const, _) = tInfConst t const
-tInfExpr t (AST.ExprTuple e1 e2, _) = tInfTuple t e1 e2
+tInfExpr t (AST.ExprTuple e1 e2, p) = do
+    t1 <- newTypeVar "tuple"
+    t2 <- newTypeVar "tuple"
+    tInfExpr t1 e1
+    tInfExpr t2 e2
+    void $ mgu (Just p) t (TTuple t1 t2)
 tInfExpr t (AST.ExprUnaryOp op e, _) = tInfUnaryOp t op e
 tInfExpr t (AST.ExprBinaryOp op e1 e2, _) = tInfBinaryOp t op e1 e2
 
 -- |Perform type inference on a list of AST expressions
 tInfExprs :: [Type] -> [AST.Expression] -> TInf ()
-tInfExprs [] [] = void $ mgu TBool TBool -- todo clean this up
+tInfExprs [] [] = void $ mgu Nothing TBool TBool -- todo clean this up
 tInfExprs (t:ts) (expr:exprs) = do
     tInfExpr t expr
     tInfExprs ts exprs
 
-tInfTuple :: Type -> AST.Expression -> AST.Expression -> TInf ()
-tInfTuple t e1 e2 = do
-    t1 <- newTypeVar "tuple"
-    t2 <- newTypeVar "tuple"
-    tInfExpr t1 e1
-    tInfExpr t2 e2
-    void $ mgu t (TTuple t1 t2)
-
 tInfUnaryOp :: Type -> AST.UnaryOperator -> AST.Expression -> TInf ()
-tInfUnaryOp t (AST.UnaryOpNeg, _) e = do
+tInfUnaryOp t (AST.UnaryOpNeg, p) e = do
     tInfExpr TBool e
-    void $ mgu t TBool
-tInfUnaryOp t (AST.UnaryOpSubtr, _) e = do
+    void $ mgu (Just p) t TBool
+tInfUnaryOp t (AST.UnaryOpSubtr, p) e = do
     tInfExpr TInt e
-    void $ mgu t TInt
+    void $ mgu (Just p) t TInt
 
 tInfBinaryOp :: Type -> AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf ()
-tInfBinaryOp t (AST.BinaryOpOr, _) e1 e2 = do
+tInfBinaryOp t (AST.BinaryOpOr, p) e1 e2 = do
     tInfExpr TBool e1
     tInfExpr TBool e2
-    void $ mgu t TBool
+    void $ mgu (Just p) t TBool
 tInfBinaryOp t (AST.BinaryOpAnd, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpOr, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpEq, _) e1 e2 = do
+tInfBinaryOp t (AST.BinaryOpEq, p) e1 e2 = do
     t' <- newTypeVar "expr"
     tInfExpr t' e1
     tInfExpr t' e2
-    void $ mgu t TBool
+    void $ mgu (Just p) t TBool
 tInfBinaryOp t (AST.BinaryOpNEq, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpEq, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpLT, _) e1 e2 = do
+tInfBinaryOp t (AST.BinaryOpLT, p) e1 e2 = do
     tInfExpr TInt e1
     tInfExpr TInt e2
-    void $ mgu t TBool
+    void $ mgu (Just p) t TBool
 tInfBinaryOp t (AST.BinaryOpGT, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpLT, p) e1 e2
 tInfBinaryOp t (AST.BinaryOpLTE, p) e1 e2= tInfBinaryOp t (AST.BinaryOpLT, p) e1 e2
 tInfBinaryOp t (AST.BinaryOpGTE, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpLT, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpConcat, _) e1 e2 = do
+tInfBinaryOp t (AST.BinaryOpConcat, p) e1 e2 = do
     t' <- newTypeVar "a"
     tInfExpr t' e1
     tInfExpr (TList t') e2
-    void $ mgu t (TList t')
-tInfBinaryOp t (AST.BinaryOpPlus, _) e1 e2 = do
+    void $ mgu (Just p) t (TList t')
+tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2 = do
     tInfExpr TInt e1
     tInfExpr TInt e2
-    void $ mgu t TInt
+    void $ mgu (Just p) t TInt
 tInfBinaryOp t (AST.BinaryOpSubtr, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
 tInfBinaryOp t (AST.BinaryOpMult, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
 tInfBinaryOp t (AST.BinaryOpDiv, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
@@ -491,7 +515,7 @@ tInfSPL decls = do
 
             -- Get the type scheme of the variable/function we just declared and unify it with the actual type
             (Scheme _ t1') <- getScheme varName
-            mgu t1' t1
+            mgu Nothing t1' t1
 
             -- Perform type inference for the next declarations
             typedDecls <- tInfSCC decls
@@ -530,7 +554,7 @@ tInfVarDecl t decl =
             let annotatedT = rTranslateType annotatedType
             (ast, str) <- tInfVarDecl' p t identifier expr
             t' <- substitute t
-            s' <- mgu annotatedT t' `catchError` (\_ ->
+            s' <- mgu (Just p) annotatedT t' `catchError` (\_ ->
                 throwError $ "Could not unify types"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateType p t') ++ ".")
@@ -555,7 +579,7 @@ tInfFunDecl t decl =
             let annotatedT = rTranslateFunType annotatedType
             (ast, str) <- tInfFunDecl' p t identifier args stmts
             t' <- substitute t
-            s' <- mgu annotatedT t `catchError` (\_ ->
+            s' <- mgu (Just p) annotatedT t `catchError` (\_ ->
                 throwError $ "Could not unify types"
                     ++ ". Expected type: " ++ AST.prettyPrint (translateFunType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateFunType p t') ++ ".")
@@ -577,7 +601,7 @@ tInfFunDecl t decl =
                 argsTypes <- getArgsTypes args
                 t'' <- substitute t'
                 let funType = TFunction argsTypes t''
-                mgu t funType
+                mgu (Just p) t funType
                 funType' <- substitute funType
                 let funTypeAST = translateFunType p funType'
 
@@ -600,7 +624,7 @@ tInfFunDecl t decl =
 
 tInfStatements :: Type -> [AST.Statement] -> TInf ([AST.Statement], Bool)
 tInfStatements t [] = do
-    mgu t TVoid
+    mgu Nothing t TVoid
     return ([], False)
 tInfStatements t (statement:statements) = do
     t' <- newTypeVar "stmt"
@@ -620,22 +644,22 @@ tInfStatements t (statement:statements) = do
         if returnsValue1
             then if returnsValue2
                 then do
-                    mgu t'' tRemaining
-                    mgu t t''
+                    mgu Nothing t'' tRemaining
+                    mgu Nothing t t''
                     s <- substitution
                     return (rewrite s statement : statements', True)
                 else do
-                    mgu t t''
+                    mgu Nothing t t''
                     s <- substitution
                     return (rewrite s statement : statements', True)
             else do
-                mgu t tRemaining
+                mgu Nothing t tRemaining
                 s <- substitution
                 return (rewrite s statement' : statements', False)
         )
 
 tInfManyStatements :: [Type] -> [AST.Statement] -> TInf ()
-tInfManyStatements [] [] = void $ mgu TBool TBool -- todo clean this up
+tInfManyStatements [] [] = void $ mgu Nothing TBool TBool -- todo clean this up
 tInfManyStatements (t:ts) (stmt:stmts) = do
     tInfStatement t stmt
     tInfManyStatements ts stmts
@@ -664,7 +688,7 @@ tInfStatement t (AST.StmtIfElse expr st1 st2, p) = do
     if returnsValue1
         then if returnsValue2
             then do
-                mgu t1 t2
+                mgu Nothing t1 t2
                 s <- substitution
                 return (
                     (AST.StmtIfElse expr (rewrite s st1') (rewrite s st2'), p),
