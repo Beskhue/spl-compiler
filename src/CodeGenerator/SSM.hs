@@ -300,6 +300,9 @@ genExpression (AST.ExprFunCall i args, p) = do
             -- Decrement stack pointer
             -- push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
 genExpression (AST.ExprConstant c, _) = genConstant c
+genExpression (AST.ExprUnaryOp op e, _) = do
+    genExpression e
+    genUnaryOp op
 genExpression (AST.ExprBinaryOp op e1 e2, _) = do
     genExpression e1
     genExpression e2
@@ -315,6 +318,10 @@ genConstant (AST.ConstEmptyList, _) = do
         push $ SSMLine Nothing (Just $ IStore SHeap) Nothing
         push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
         push $ SSMLine Nothing (Just $ IStore SHeap) Nothing
+
+genUnaryOp :: AST.UnaryOperator -> Gen ()
+genUnaryOp (AST.UnaryOpNeg, _) = push $ SSMLine Nothing (Just $ ICompute ONot) Nothing
+genUnaryOp (AST.UnaryOpSubtr, _) = push $ SSMLine Nothing (Just $ ICompute ONeg) Nothing
 
 genBinaryOp :: AST.BinaryOperator -> Gen ()
 genBinaryOp (AST.BinaryOpOr, _) = push $ SSMLine Nothing (Just $ ICompute OOr) Nothing
