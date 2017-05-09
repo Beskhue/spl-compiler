@@ -284,6 +284,9 @@ genFunDecl (AST.FunDeclTyped i args _ stmts, _) = do
 
 genStatement :: AST.Statement -> Gen ()
 genStatement (AST.StmtFunCall i args, p) = genExpression (AST.ExprFunCall i args, p)
+genStatement (AST.StmtReturn e, _) = do
+    genExpression e
+    push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
 
 genExpression :: AST.Expression -> Gen ()
 genExpression (AST.ExprFunCall i args, p) = do
@@ -325,8 +328,6 @@ genConstant (AST.ConstBool b, _) = let n = if b then -1 else 0 in
 genConstant (AST.ConstEmptyList, _) = do
         push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
         push $ SSMLine Nothing (Just $ IStore SHeap) Nothing
-        push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
-        push $ SSMLine Nothing (Just $ IStore SHeap) Nothing
 
 genUnaryOp :: AST.UnaryOperator -> Gen ()
 genUnaryOp (AST.UnaryOpNeg, _) = push $ SSMLine Nothing (Just $ ICompute ONot) Nothing
@@ -347,7 +348,13 @@ genBinaryOp (AST.BinaryOpLT, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OL
 genBinaryOp (AST.BinaryOpGT, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OGt) Nothing
 genBinaryOp (AST.BinaryOpLTE, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OLe) Nothing
 genBinaryOp (AST.BinaryOpGTE, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OGe) Nothing
-genBinaryOp (AST.BinaryOpConcat, _) _ _ = undefined
+genBinaryOp (AST.BinaryOpConcat, _) _ _ = do
+    -- Stack points to address of tail; store it on the heap
+    push $ SSMLine Nothing (Just $ IStore SHeap) (Just "start concat")
+    -- Adjust stack to point to the value we want to add
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
+    -- Store the value on the stack into the heap
+    push $ SSMLine Nothing (Just $ IStore SHeap) (Just "end concat")
 genBinaryOp (AST.BinaryOpPlus, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
 genBinaryOp (AST.BinaryOpSubtr, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OSub) Nothing
 genBinaryOp (AST.BinaryOpMult, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OMul) Nothing
