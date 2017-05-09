@@ -259,7 +259,9 @@ genDet annotation spl =
 genSPL :: AST.SPL -> Gen SSM
 genSPL decls = do
     -- First add a statement to branch to the main function
-    push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel "main") Nothing
+    push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel "main") Nothing
+    -- Halt
+    push $ SSMLine Nothing (Just $ IControl CHalt) Nothing
     -- Process all declarations
     liftM id (mapM genDecl decls)
     -- Output generated SSM
@@ -276,11 +278,8 @@ genFunDecl (AST.FunDeclTyped i args _ stmts, _) = do
             (Just $ IControl $ CLink $ ANumber $ length args)
             Nothing
         liftM id (mapM genStatement stmts)
-        if Checker.idName i == "main"
-            then push $ SSMLine Nothing (Just $ IControl CHalt) Nothing -- halt
-            else do
-                push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
-                push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
+        push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
+        push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
 
 genStatement :: AST.Statement -> Gen ()
 genStatement (AST.StmtFunCall i args, p) = genExpression (AST.ExprFunCall i args, p)
