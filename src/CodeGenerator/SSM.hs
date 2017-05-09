@@ -298,9 +298,12 @@ genExpression (AST.ExprFunCall i args, p) = do
             -- Jump to function
             push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel $ Checker.idName i) Nothing
             -- Decrement stack pointer
-            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
-
+            -- push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
 genExpression (AST.ExprConstant c, _) = genConstant c
+genExpression (AST.ExprBinaryOp op e1 e2, _) = do
+    genExpression e1
+    genExpression e2
+    genBinaryOp op
 
 genConstant :: AST.Constant -> Gen ()
 genConstant (AST.ConstInt i, _) = push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber i) Nothing
@@ -312,3 +315,19 @@ genConstant (AST.ConstEmptyList, _) = do
         push $ SSMLine Nothing (Just $ IStore SHeap) Nothing
         push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
         push $ SSMLine Nothing (Just $ IStore SHeap) Nothing
+
+genBinaryOp :: AST.BinaryOperator -> Gen ()
+genBinaryOp (AST.BinaryOpOr, _) = push $ SSMLine Nothing (Just $ ICompute OOr) Nothing
+genBinaryOp (AST.BinaryOpAnd, _) = push $ SSMLine Nothing (Just $ ICompute OAnd) Nothing
+genBinaryOp (AST.BinaryOpEq, _) = push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
+genBinaryOp (AST.BinaryOpNEq, _) = push $ SSMLine Nothing (Just $ ICompute ONeq) Nothing
+genBinaryOp (AST.BinaryOpLT, _) = push $ SSMLine Nothing (Just $ ICompute OLt) Nothing
+genBinaryOp (AST.BinaryOpGT, _) = push $ SSMLine Nothing (Just $ ICompute OGt) Nothing
+genBinaryOp (AST.BinaryOpLTE, _) = push $ SSMLine Nothing (Just $ ICompute OLe) Nothing
+genBinaryOp (AST.BinaryOpGTE, _) = push $ SSMLine Nothing (Just $ ICompute OGe) Nothing
+genBinaryOp (AST.BinaryOpConcat, _) = undefined
+genBinaryOp (AST.BinaryOpPlus, _) = push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+genBinaryOp (AST.BinaryOpSubtr, _) = push $ SSMLine Nothing (Just $ ICompute OSub) Nothing
+genBinaryOp (AST.BinaryOpMult, _) = push $ SSMLine Nothing (Just $ ICompute OMul) Nothing
+genBinaryOp (AST.BinaryOpDiv, _) = push $ SSMLine Nothing (Just $ ICompute ODiv) Nothing
+genBinaryOp (AST.BinaryOpMod, _) = push $ SSMLine Nothing (Just $ ICompute OMod) Nothing
