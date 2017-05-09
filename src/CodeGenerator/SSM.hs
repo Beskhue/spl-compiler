@@ -303,10 +303,15 @@ genExpression (AST.ExprConstant c, _) = genConstant c
 genExpression (AST.ExprUnaryOp op e, _) = do
     genExpression e
     genUnaryOp op
-genExpression (AST.ExprBinaryOp op e1 e2, _) = do
-    genExpression e1
-    genExpression e2
-    genBinaryOp op
+genExpression (AST.ExprBinaryOp op e1@(_, p1) e2@(_, p2), _) = do
+    a <- getASTAnnotation
+    case Map.lookup p1 a of
+        Just t1 ->
+            case Map.lookup p2 a of
+                Just t2 ->  do
+                    genExpression e1
+                    genExpression e2
+                    genBinaryOp op t1 t2
 
 genConstant :: AST.Constant -> Gen ()
 genConstant (AST.ConstInt i, _) = push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber i) Nothing
@@ -323,18 +328,23 @@ genUnaryOp :: AST.UnaryOperator -> Gen ()
 genUnaryOp (AST.UnaryOpNeg, _) = push $ SSMLine Nothing (Just $ ICompute ONot) Nothing
 genUnaryOp (AST.UnaryOpSubtr, _) = push $ SSMLine Nothing (Just $ ICompute ONeg) Nothing
 
-genBinaryOp :: AST.BinaryOperator -> Gen ()
-genBinaryOp (AST.BinaryOpOr, _) = push $ SSMLine Nothing (Just $ ICompute OOr) Nothing
-genBinaryOp (AST.BinaryOpAnd, _) = push $ SSMLine Nothing (Just $ ICompute OAnd) Nothing
-genBinaryOp (AST.BinaryOpEq, _) = push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
-genBinaryOp (AST.BinaryOpNEq, _) = push $ SSMLine Nothing (Just $ ICompute ONeq) Nothing
-genBinaryOp (AST.BinaryOpLT, _) = push $ SSMLine Nothing (Just $ ICompute OLt) Nothing
-genBinaryOp (AST.BinaryOpGT, _) = push $ SSMLine Nothing (Just $ ICompute OGt) Nothing
-genBinaryOp (AST.BinaryOpLTE, _) = push $ SSMLine Nothing (Just $ ICompute OLe) Nothing
-genBinaryOp (AST.BinaryOpGTE, _) = push $ SSMLine Nothing (Just $ ICompute OGe) Nothing
-genBinaryOp (AST.BinaryOpConcat, _) = undefined
-genBinaryOp (AST.BinaryOpPlus, _) = push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
-genBinaryOp (AST.BinaryOpSubtr, _) = push $ SSMLine Nothing (Just $ ICompute OSub) Nothing
-genBinaryOp (AST.BinaryOpMult, _) = push $ SSMLine Nothing (Just $ ICompute OMul) Nothing
-genBinaryOp (AST.BinaryOpDiv, _) = push $ SSMLine Nothing (Just $ ICompute ODiv) Nothing
-genBinaryOp (AST.BinaryOpMod, _) = push $ SSMLine Nothing (Just $ ICompute OMod) Nothing
+genBinaryOp :: AST.BinaryOperator -> Checker.Type -> Checker.Type -> Gen ()
+genBinaryOp (AST.BinaryOpOr, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OOr) Nothing
+genBinaryOp (AST.BinaryOpAnd, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OAnd) Nothing
+genBinaryOp (AST.BinaryOpEq, _) Checker.TBool Checker.TBool = push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
+genBinaryOp (AST.BinaryOpEq, _) _ _ = do -- address, char or int equals
+    push $ SSMLine Nothing (Just $ ICompute OSub) Nothing
+    push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
+genBinaryOp (AST.BinaryOpNEq, p) t1 t2 = do
+    genBinaryOp (AST.BinaryOpEq, p) t1 t2
+    genUnaryOp (AST.UnaryOpNeg, p) -- Todo: make more efficient
+genBinaryOp (AST.BinaryOpLT, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OLt) Nothing
+genBinaryOp (AST.BinaryOpGT, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OGt) Nothing
+genBinaryOp (AST.BinaryOpLTE, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OLe) Nothing
+genBinaryOp (AST.BinaryOpGTE, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OGe) Nothing
+genBinaryOp (AST.BinaryOpConcat, _) _ _ = undefined
+genBinaryOp (AST.BinaryOpPlus, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+genBinaryOp (AST.BinaryOpSubtr, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OSub) Nothing
+genBinaryOp (AST.BinaryOpMult, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OMul) Nothing
+genBinaryOp (AST.BinaryOpDiv, _) _ _ = push $ SSMLine Nothing (Just $ ICompute ODiv) Nothing
+genBinaryOp (AST.BinaryOpMod, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OMod) Nothing
