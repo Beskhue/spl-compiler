@@ -161,7 +161,7 @@ emptyCtx :: TypeCtx
 emptyCtx = TypeCtx emptyMap
 
 builtInCtx :: TypeCtx
-builtInCtx = TypeCtx $ Map.fromAscList [
+builtInCtx = TypeCtx $ Map.fromList [
     ("print", let t = TVar "a" in Scheme ["a"] (TFunction [t, t] TVoid)),
     ("isEmpty", let t = TList (TVar "a") in Scheme ["a"] (TFunction [t] TBool)),
     ("length", let t = TList (TVar "a") in Scheme ["a"] (TFunction [t] TInt))
@@ -345,7 +345,7 @@ tInfVarName varName = do
     tInfVarName' (Stack.stackToList ctx') varName
     where
         tInfVarName' :: [TypeCtx] -> String -> TInf Type
-        tInfVarName' [] _ = throwError $ "unbound variable: " ++ varName
+        tInfVarName' [] varName = throwError $ "unbound variable: " ++ varName
         tInfVarName' (TypeCtx ctx : ctxs) varName =
             case Map.lookup varName ctx of
                 Nothing -> tInfVarName' ctxs varName
