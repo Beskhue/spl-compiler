@@ -137,15 +137,17 @@ instance Display SSMArgument where
     display (AText s) = s
     display (AColor s) = s
 
-data SSMRegister = RPC | RSP | RMP | RHP | RRR | R5 | R6 | R7
+data SSMRegister = RProgramCounter | RStackPointer | RMarkPointer
+                 | RHeapPointer | RReturnRegister
+                 | R5 | R6 | R7
                    deriving (Show, Eq)
 
 instance Display SSMRegister where
-    display RPC = "PC"
-    display RSP = "SP"
-    display RMP = "MP"
-    display RHP = "HP"
-    display RRR = "RR"
+    display RProgramCounter = "PC"
+    display RStackPointer = "SP"
+    display RMarkPointer = "MP"
+    display RHeapPointer = "HP"
+    display RReturnRegister = "RR"
     display R5 = "R5"
     display R6 = "R6"
     display R7 = "R7"
@@ -285,6 +287,8 @@ genStatement :: AST.Statement -> Gen ()
 genStatement (AST.StmtFunCall i args, p) = genExpression (AST.ExprFunCall i args, p)
 genStatement (AST.StmtReturn e, _) = do
     genExpression e
+    push $ SSMLine Nothing (Just $ IStore $ SRegister $ ARegister RReturnRegister) Nothing
+    push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
 
 genExpression :: AST.Expression -> Gen ()
@@ -304,7 +308,9 @@ genExpression (AST.ExprFunCall i args, p) = do
             -- Jump to function
             push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel $ Checker.idName i) Nothing
             -- Decrement stack pointer
-            -- push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
+            -- Load returned value
+            push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
 genExpression (AST.ExprConstant c, _) = genConstant c
 genExpression (AST.ExprUnaryOp op e, _) = do
     genExpression e
