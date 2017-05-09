@@ -291,6 +291,10 @@ genExpression (AST.ExprFunCall i args, p) = do
     liftM id (mapM genExpression args)
     case Checker.idName i of
         "print" -> case Map.lookup p a of
+            Just (Checker.TFunction [Checker.TBool] _) -> do
+                push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ANumber 2) (Just "start print bool")
+                push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 1) Nothing
+                push $ SSMLine Nothing (Just $ IIO IOPrintInt) (Just "end print bool")
             Just (Checker.TFunction [Checker.TInt] _) -> push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
             Just (Checker.TFunction [Checker.TChar] _) -> push $ SSMLine Nothing (Just $ IIO IOPrintChar) Nothing
             t -> throwError $ "No overloaded version of print with this type: " ++ show t
@@ -331,10 +335,11 @@ genUnaryOp (AST.UnaryOpSubtr, _) = push $ SSMLine Nothing (Just $ ICompute ONeg)
 genBinaryOp :: AST.BinaryOperator -> Checker.Type -> Checker.Type -> Gen ()
 genBinaryOp (AST.BinaryOpOr, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OOr) Nothing
 genBinaryOp (AST.BinaryOpAnd, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OAnd) Nothing
-genBinaryOp (AST.BinaryOpEq, _) Checker.TBool Checker.TBool = push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
-genBinaryOp (AST.BinaryOpEq, _) _ _ = do -- address, char or int equals
-    push $ SSMLine Nothing (Just $ ICompute OSub) Nothing
-    push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
+genBinaryOp (AST.BinaryOpEq, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
+--genBinaryOp (AST.BinaryOpEq, _) Checker.TBool Checker.TBool = push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
+--genBinaryOp (AST.BinaryOpEq, _) _ _ = do -- address, char or int equals
+--    -- push $ SSMLine Nothing (Just $ ICompute OSub) Nothing
+--    push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
 genBinaryOp (AST.BinaryOpNEq, p) t1 t2 = do
     genBinaryOp (AST.BinaryOpEq, p) t1 t2
     genUnaryOp (AST.UnaryOpNeg, p) -- Todo: make more efficient
