@@ -298,12 +298,19 @@ genExpression (AST.ExprFunCall i args, p) = do
     case Checker.idName i of
         "print" -> case Map.lookup p a of
             Just (Checker.TFunction [Checker.TBool] _) -> do
-                push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ANumber 2) (Just "start print bool")
-                push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 1) Nothing
+                push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ANumber 4) (Just "start print bool")
+                push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 1) Nothing -- True
+                push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ANumber 1) Nothing
+                push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 0) Nothing -- False
                 push $ SSMLine Nothing (Just $ IIO IOPrintInt) (Just "end print bool")
             Just (Checker.TFunction [Checker.TInt] _) -> push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
             Just (Checker.TFunction [Checker.TChar] _) -> push $ SSMLine Nothing (Just $ IIO IOPrintChar) Nothing
             t -> throwError $ "No overloaded version of print with this type: " ++ show t
+        "isEmpty" -> do
+            -- Get next address of the list, if it is -1 the list is empty
+            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) (Just "start isEmpty")
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ ICompute OEq) (Just "end isEmpty")
         _ -> do
             -- Jump to function
             push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel $ Checker.idName i) Nothing
