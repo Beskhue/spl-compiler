@@ -8,6 +8,7 @@ import Data.AST as AST
 import qualified Lexer.Lexer as Lexer
 import qualified Parser.SPLParser as SPLParser
 import qualified TypeSystem.Checker as Checker
+import qualified CodeGenerator.SSM as SSM
 import qualified Data.Map as Map
 
 getFilePath :: IO String
@@ -30,7 +31,10 @@ compile = do
             Left e -> putStrLn $ show e
             Right ast -> case Checker.check ast of
                 Left e -> putStrLn $ show e
-                Right (b, annotation) -> putStrLn $ AST.prettyPrint b ++ "\n\n" ++ show b ++ "\n\n" ++ show (Map.assocs annotation)
+                --Right (b, annotation) -> putStrLn $ AST.prettyPrint b ++ "\n\n" ++ show b ++ "\n\n" ++ show (Map.assocs annotation)
+                Right (b, annotation) -> case SSM.gen annotation b of
+                    Left e -> putStrLn $ show e
+                    Right ssm -> putStrLn $ SSM.display ssm
 
 prettyPrint :: IO()
 prettyPrint = do

@@ -22,6 +22,9 @@ import qualified Data.Map as Map
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
+-- import Data.Foldable (foldrM, foldlM)
+
+import qualified Data.Char as Char
 
 import qualified TypeSystem.Checker as Checker
 
@@ -42,6 +45,7 @@ instance Display SSM where
     display = concatMap display
 
 data SSMLine = SSMLine (Maybe SSMLabel) (Maybe SSMInstruction) (Maybe SSMComment)
+               deriving (Show)
 
 instance Display SSMLine where
     display (SSMLine l i c) =
@@ -76,6 +80,7 @@ instance Display SSMInstruction where
     display (IStore s) = display s
     display (ICompute o) = display o
     display (IControl c) = display c
+    display (IIO io) = display io
     display (IAnnotate arg1 arg2 arg3 arg4 arg5) = "annotate"
         ++ " " ++ display arg1 ++ " " ++ display arg2 ++ " " ++ display arg3
         ++ " " ++ display arg4 ++ " " ++ display arg5
@@ -181,6 +186,7 @@ data SSMControl = CBranchEq SSMArgument | CBranchNeq SSMArgument
                 | CJumpSubroutine
                 | CReturn
                 | CLink SSMArgument | CUnlink
+                | CAdjustSP SSMArgument
                 | CNop | CHalt
                   deriving (Show, Eq)
 
@@ -194,11 +200,12 @@ instance Display SSMControl where
     display (CBranchAlways arg) = "bra " ++ display arg
     display (CBranchFalse arg) = "brf " ++ display arg
     display (CBranchTrue arg) = "brt " ++ display arg
-    display (CBranchSubroutine arg) = "brs " ++ display arg
+    display (CBranchSubroutine arg) = "bsr " ++ display arg
     display CJumpSubroutine = "jsr"
     display CReturn = "ret"
     display (CLink arg) = "link " ++ display arg
     display CUnlink = "unlink"
+    display (CAdjustSP arg) = "ajs " ++ display arg
     display CNop = "nop"
     display CHalt = "halt"
 
@@ -213,7 +220,8 @@ instance Display SSMIO where
 
 --------------------------------------------------------------------------------
 
-newtype GenState = GenState { astAnnotation :: Checker.ASTAnnotation }
+data GenState = GenState { ssm :: SSM,
+                           astAnnotation :: Checker.ASTAnnotation }
                     deriving (Show)
 
 type Gen a = ExceptT String (State GenState) a
@@ -221,22 +229,86 @@ type Gen a = ExceptT String (State GenState) a
 runGen :: Gen a -> Checker.ASTAnnotation -> (Either String a, GenState)
 runGen g astAnnotation = runState (runExceptT g) initGenState
     where
-        initGenState = GenState {astAnnotation = astAnnotation}
+        initGenState = GenState {ssm = [], astAnnotation = astAnnotation}
+
+getASTAnnotation :: Gen Checker.ASTAnnotation
+getASTAnnotation = do
+    st <- get
+    return $ astAnnotation st
+
+push :: SSMLine -> Gen ()
+push l = do
+    st <- get
+    put st {ssm = ssm st ++ [l]}
 
 --------------------------------------------------------------------------------
 
-gen :: AST.SPL -> Checker.ASTAnnotation -> Either String SSM
-gen ast annotation = res
+gen :: Checker.ASTAnnotation -> AST.SPL -> Either String SSM
+gen annotation ast  = res
     where
         (res, _) = runGen (genSPL ast) annotation
 
-genDet :: AST.SPL -> Checker.ASTAnnotation -> SSM
-genDet spl annotation =
-    case gen spl annotation of
+genDet :: Checker.ASTAnnotation -> AST.SPL -> SSM
+genDet annotation spl =
+    case gen annotation spl of
         Left err -> Trace.trace (show err) undefined
         Right ssm -> ssm
 
 --------------------------------------------------------------------------------
 
 genSPL :: AST.SPL -> Gen SSM
-genSPL = undefined
+genSPL decls = do
+    -- First add a statement to branch to the main function
+    push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel "main") Nothing
+    -- Process all declarations
+    liftM id (mapM genDecl decls)
+    -- Output generated SSM
+    st <- get
+    return $ ssm st
+
+genDecl :: AST.Decl -> Gen ()
+genDecl (AST.DeclF funDecl, _) = genFunDecl funDecl
+
+genFunDecl :: AST.FunDecl -> Gen ()
+genFunDecl (AST.FunDeclTyped i args _ stmts, _) = do
+        push $ SSMLine
+            (Just $ Checker.idName i)
+            (Just $ IControl $ CLink $ ANumber $ length args)
+            Nothing
+        liftM id (mapM genStatement stmts)
+        if Checker.idName i == "main"
+            then push $ SSMLine Nothing (Just $ IControl CHalt) Nothing -- halt
+            else do
+                push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
+                push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
+
+genStatement :: AST.Statement -> Gen ()
+genStatement (AST.StmtFunCall i args, p) = genExpression (AST.ExprFunCall i args, p)
+
+genExpression :: AST.Expression -> Gen ()
+genExpression (AST.ExprFunCall i args, p) = do
+    a <- getASTAnnotation
+    liftM id (mapM genExpression args)
+    case Checker.idName i of
+        "print" -> case Map.lookup p a of
+            Just (Checker.TFunction [Checker.TInt] _) -> push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
+            Just (Checker.TFunction [Checker.TChar] _) -> push $ SSMLine Nothing (Just $ IIO IOPrintChar) Nothing
+            t -> throwError $ "No overloaded version of print with this type: " ++ show t
+        _ -> do
+            -- Jump to function
+            push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel $ Checker.idName i) Nothing
+            -- Decrement stack pointer
+            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
+
+genExpression (AST.ExprConstant c, _) = genConstant c
+
+genConstant :: AST.Constant -> Gen ()
+genConstant (AST.ConstInt i, _) = push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber i) Nothing
+genConstant (AST.ConstChar c, _) = push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ Char.digitToInt c) Nothing
+genConstant (AST.ConstBool b, _) = let n = if b then -1 else 0 in
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
+genConstant (AST.ConstEmptyList, _) = do
+        push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
+        push $ SSMLine Nothing (Just $ IStore SHeap) Nothing
+        push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
+        push $ SSMLine Nothing (Just $ IStore SHeap) Nothing
