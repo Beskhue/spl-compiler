@@ -228,10 +228,11 @@ instance Display SSMIO where
 --------------------------------------------------------------------------------
 
 type AddressOffset = Int
-type VariableScope = Stack.Stack (Map.Map AST.Identifier AddressOffset)
+type VariableScope = Map.Map String (Maybe AddressOffset)
+type VariableScopes = Stack.Stack VariableScope
 
-emptyVariableScope :: VariableScope
-emptyVariableScope = Stack.stackNew
+emptyVariableScopes :: VariableScopes
+emptyVariableScopes = Stack.stackNew
 
 --------------------------------------------------------------------------------
 
@@ -240,10 +241,10 @@ data GenState = GenState { ssm :: SSM,
                            labelSupply :: Int}
                     deriving (Show)
 
-type Gen a = ExceptT String (ReaderT VariableScope (State GenState)) a
+type Gen a = ExceptT String (ReaderT VariableScopes (State GenState)) a
 
 runGen :: Gen a -> Checker.ASTAnnotation -> (Either String a, GenState)
-runGen g astAnnotation = runState (runReaderT (runExceptT g) emptyVariableScope) initGenState
+runGen g astAnnotation = runState (runReaderT (runExceptT g) emptyVariableScopes) initGenState
     where
         initGenState = GenState {ssm = [], astAnnotation = astAnnotation, labelSupply = 0}
 
@@ -264,6 +265,18 @@ push l = do
     st <- get
     put st {ssm = ssm st ++ [l]}
 
+getVariable :: String -> Gen (Maybe (Maybe AddressOffset))
+getVariable s = do
+    scopes <- ask
+    return $ getVariable' scopes s
+    where
+        getVariable' :: VariableScopes -> String -> (Maybe (Maybe AddressOffset))
+        getVariable' scopes s = case Stack.stackPop scopes of
+            Nothing -> Nothing
+            Just (scopes', scope) -> case Map.lookup s scope of
+                Nothing -> getVariable' scopes' s
+                result -> result
+
 --------------------------------------------------------------------------------
 
 gen :: Checker.ASTAnnotation -> AST.SPL -> Either String SSM
@@ -282,17 +295,21 @@ genDet annotation spl =
 genSPL :: AST.SPL -> Gen SSM
 genSPL decls = do
     -- Process all variable declarations
-    liftM id (mapM genDecl (filter (\decl -> case decl of
-        (AST.DeclV _, _) -> True
-        _ -> False) decls))
+    let varDecls = filter (\decl -> case decl of
+            (AST.DeclV _, _) -> True
+            _ -> False) decls
+    let varDeclNames = map (\decl -> case decl of (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> Checker.idName i) varDecls
+    scopes <- ask
+    let scopes' = Stack.stackPush scopes (Map.fromList [(varDeclName, Nothing) | varDeclName <- varDeclNames])
+    local (const scopes') (liftM id (mapM genDecl varDecls))
     -- First add a statement to branch to the main function
     push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel "main") Nothing
     -- Halt
     push $ SSMLine Nothing (Just $ IControl CHalt) Nothing
     -- Process all function declarations
-    liftM id (mapM genDecl (filter (\decl -> case decl of
+    local (const scopes') (liftM id (mapM genDecl (filter (\decl -> case decl of
         (AST.DeclF _, _) -> True
-        _ -> False) decls))
+        _ -> False) decls)))
     -- Output generated SSM
     st <- get
     return $ ssm st
