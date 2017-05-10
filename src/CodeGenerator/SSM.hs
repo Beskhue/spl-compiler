@@ -377,7 +377,7 @@ genExpression (AST.ExprFunCall i args, p) = do
             -- Clean up
             push $ SSMLine (Just lblCleanUp) (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
             genPrintChar ']'
-        genPrint (Checker.TVar _) = push $ SSMLine Nothing (Just $ IControl CNop) Nothing -- Todo: make more efficient
+        genPrint (Checker.TVar _) = return ()
 
 genExpression (AST.ExprConstant c, _) = genConstant c
 genExpression (AST.ExprUnaryOp op e, _) = do
