@@ -18,10 +18,12 @@ module CodeGenerator.SSM where
 import qualified Debug.Trace as Trace
 
 import qualified Data.Map as Map
+import qualified Data.Stack as Stack
 
 import Control.Monad
 import Control.Monad.Except
 import Control.Monad.State
+import Control.Monad.Reader
 -- import Data.Foldable (foldrM, foldlM)
 
 import qualified Data.Char as Char
@@ -225,15 +227,23 @@ instance Display SSMIO where
 
 --------------------------------------------------------------------------------
 
+type AddressOffset = Int
+type VariableScope = Stack.Stack (Map.Map AST.Identifier AddressOffset)
+
+emptyVariableScope :: VariableScope
+emptyVariableScope = Stack.stackNew
+
+--------------------------------------------------------------------------------
+
 data GenState = GenState { ssm :: SSM,
                            astAnnotation :: Checker.ASTAnnotation,
                            labelSupply :: Int}
                     deriving (Show)
 
-type Gen a = ExceptT String (State GenState) a
+type Gen a = ExceptT String (ReaderT VariableScope (State GenState)) a
 
 runGen :: Gen a -> Checker.ASTAnnotation -> (Either String a, GenState)
-runGen g astAnnotation = runState (runExceptT g) initGenState
+runGen g astAnnotation = runState (runReaderT (runExceptT g) emptyVariableScope) initGenState
     where
         initGenState = GenState {ssm = [], astAnnotation = astAnnotation, labelSupply = 0}
 
