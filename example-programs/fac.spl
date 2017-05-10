@@ -1,7 +1,12 @@
-facR ( n )
-{    if ( n < 2 ) {
+facR (n)
+{   
+    if ( n < 2 ) {
         return 1;
     } else {
-        return n * facR ( n - 1 );
+        return n * facR(n - 1);
     }
+}
+
+main () {
+    print(facR(5));
 }
