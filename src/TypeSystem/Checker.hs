@@ -379,30 +379,6 @@ tInfExpr t (AST.ExprIdentifier id, p) = do
 tInfExpr t (AST.ExprIdentifierField id fields, _) = do
     t' <- tInfId id
     tTraverseFields t t' fields
-    where
-        tTraverseFields :: Type -> Type -> [AST.Field] -> TInf ()
-        tTraverseFields t t' [] = void $ mgu Nothing t t'
-        tTraverseFields t t' (field:fields) =
-            case field of
-                (AST.FieldHd, p) -> do
-                    tVar <- newTypeVar "fld"
-                    s <- mgu (Just p) t' (TList tVar)
-                    tTraverseFields t (apply s tVar) fields
-                (AST.FieldTl, p) -> do
-                    tVar <- newTypeVar "fld"
-                    s <- mgu (Just p) t' (TList tVar)
-                    tTraverseFields t (apply s (TList tVar)) fields
-                (AST.FieldFst, p) -> do
-                    tVar1 <- newTypeVar "fld"
-                    tVar2 <- newTypeVar "fld"
-                    s <- mgu (Just p) t' (TTuple tVar1 tVar2)
-                    tTraverseFields t (apply s tVar1) fields
-                (AST.FieldSnd, p) -> do
-                    tVar1 <- newTypeVar "fld"
-                    tVar2 <- newTypeVar "fld"
-                    s <- mgu (Just p) t' (TTuple tVar1 tVar2)
-                    tTraverseFields t (apply s tVar2) fields
-
 tInfExpr t (AST.ExprFunCall id args, p) = do
     t1 <- tInfId id
     ts <- mapM (const $ newTypeVar "arg") args
@@ -423,6 +399,29 @@ tInfExpr t (AST.ExprBinaryOp op e1 e2, p) = do
     tInfBinaryOp t op e1 e2
     t' <- substitute t
     annotate p t'
+
+tTraverseFields :: Type -> Type -> [AST.Field] -> TInf ()
+tTraverseFields t t' [] = void $ mgu Nothing t t'
+tTraverseFields t t' (field:fields) =
+    case field of
+        (AST.FieldHd, p) -> do
+            tVar <- newTypeVar "fld"
+            s <- mgu (Just p) t' (TList tVar)
+            tTraverseFields t (apply s tVar) fields
+        (AST.FieldTl, p) -> do
+            tVar <- newTypeVar "fld"
+            s <- mgu (Just p) t' (TList tVar)
+            tTraverseFields t (apply s (TList tVar)) fields
+        (AST.FieldFst, p) -> do
+            tVar1 <- newTypeVar "fld"
+            tVar2 <- newTypeVar "fld"
+            s <- mgu (Just p) t' (TTuple tVar1 tVar2)
+            tTraverseFields t (apply s tVar1) fields
+        (AST.FieldSnd, p) -> do
+            tVar1 <- newTypeVar "fld"
+            tVar2 <- newTypeVar "fld"
+            s <- mgu (Just p) t' (TTuple tVar1 tVar2)
+            tTraverseFields t (apply s tVar2) fields
 
 -- |Perform type inference on a list of AST expressions
 tInfExprs :: [Type] -> [AST.Expression] -> TInf ()
@@ -746,7 +745,12 @@ tInfStatement t (AST.StmtAssignment identifier expr, p) = do
     (Scheme _ t) <- getScheme (idName identifier)
     tInfExpr t expr
     return ((AST.StmtAssignment identifier expr, p), "", False)
-tInfStatement t (AST.StmtAssignmentField identifier fields expr, p) = throwError "Assigning to fields is not supported"
+tInfStatement t (AST.StmtAssignmentField identifier fields expr, p) = do
+    (Scheme _ t) <- getScheme (idName identifier)
+    t' <- newTypeVar "var"
+    tInfExpr t' expr
+    tTraverseFields t' t fields
+    return ((AST.StmtAssignmentField identifier fields expr, p), "", False)
 tInfStatement t (AST.StmtFunCall identifier expressions, p) = do
     tInfExpr t (AST.ExprFunCall identifier expressions, p)
     return ((AST.StmtFunCall identifier expressions, p), "", False)
@@ -806,18 +810,20 @@ instance Dependencies AST.Statement where
     dependencies globalDefs (AST.StmtVarDecl decl, _) = dependencies globalDefs decl
     dependencies globalDefs (AST.StmtIf e s, _) =
         let (globalDefs', deps) = dependencies globalDefs e in
-            let (globalDefs'', deps') = dependencies globalDefs' s in
+            let (_, deps') = dependencies globalDefs' s in
                 (globalDefs', deps ++ deps')
     dependencies globalDefs (AST.StmtIfElse e s1 s2, _) =
         let (globalDefs', deps) = dependencies globalDefs e in
-            let (globalDefs'', deps') = dependencies globalDefs' s1 in
-                let (globalDefs''', deps'') = dependencies globalDefs' s2 in
+            let (_, deps') = dependencies globalDefs' s1 in
+                let (_, deps'') = dependencies globalDefs' s2 in
                     (globalDefs', deps ++ deps' ++ deps'')
     dependencies globalDefs (AST.StmtWhile e s, _) =
         let (globalDefs', deps) = dependencies globalDefs e in
-            let (globalDefs'', deps') = dependencies globalDefs' s in
+            let (_, deps') = dependencies globalDefs' s in
                 (globalDefs', deps ++ deps')
-    dependencies globalDefs (AST.StmtBlock ss, _) = dependencies globalDefs ss
+    dependencies globalDefs (AST.StmtBlock ss, _) =
+        let (_, deps) = dependencies globalDefs ss in
+            (globalDefs, deps)
     dependencies globalDefs (AST.StmtAssignment i e, _) =
         let (_, deps) = dependencies globalDefs i in
             let (_, deps') = dependencies globalDefs e in
