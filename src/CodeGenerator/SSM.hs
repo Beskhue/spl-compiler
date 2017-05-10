@@ -522,6 +522,10 @@ genExpression (AST.ExprFunCall i args, p) = do
         genPrint (Checker.TVar _) = return ()
 
 genExpression (AST.ExprConstant c, _) = genConstant c
+genExpression (AST.ExprTuple e1 e2, _) = do
+    genExpression e1
+    genExpression e2
+    undefined
 genExpression (AST.ExprUnaryOp op e, _) = do
     genExpression e
     genUnaryOp op
