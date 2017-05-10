@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -XFlexibleInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 
 {-|
 Module: CodeGenerator.SSM
