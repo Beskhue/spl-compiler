@@ -410,7 +410,7 @@ genStatement (AST.StmtAssignment i e, _) stmts = do
         Just (SGlobal, offset) -> do -- Assign to a global
             -- Load the address of the end of the program code
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "assign global " ++ Checker.idName i)
-            -- Load the value at the address of (the end of the program code + offset)
+            -- Store the value at the address of (the end of the program code + offset)
             push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber (endPCToStartStackOffset + offset)) (Nothing)
         Just (SLocal, offset) -> do
             push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber $ offset) (Just $ "assign local " ++ Checker.idName i)
