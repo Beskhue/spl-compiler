@@ -15,6 +15,8 @@ http://www.staff.science.uu.nl/~dijks106/SSM/
 
 module CodeGenerator.SSM where
 
+import GHC.Generics
+
 import qualified Debug.Trace as Trace
 
 import qualified Data.Map as Map
@@ -637,25 +639,60 @@ class SSMPost a where
     renameLabel :: String -> String -> a -> a
     renameLabel _ _ a = a
 
+instance SSMPost a => SSMPost (Maybe a) where
+    renameLabel _ _ Nothing = Nothing
+    renameLabel f t (Just x) = Just $ renameLabel f t x
+
 instance SSMPost SSM where
     renameLabel f t = map (renameLabel f t)
 
 instance SSMPost SSMLine where
+    renameLabel f t (SSMLine l o c) = SSMLine (renameLabel f t l) (renameLabel f t o) (renameLabel f t c)
 
 instance SSMPost SSMInstruction where
-
-instance SSMPost SSMLoad where
+    renameLabel f t (ILoad l) = ILoad (renameLabel f t l)
+    renameLabel f t (IStore l) = IStore (renameLabel f t l)
+    renameLabel f t (IControl l) = IControl (renameLabel f t l)
+    renameLabel f t (IAnnotate a1 a2 a3 a4 a5) = IAnnotate (renameLabel f t a1) (renameLabel f t a2) (renameLabel f t a3) (renameLabel f t a4) (renameLabel f t a5)
+    renameLabel _ _ i = i
 
 instance SSMPost SSMStore where
+    renameLabel f t (SStack a) = SStack $ renameLabel f t a
+    renameLabel f t SHeap = SHeap
+    renameLabel f t (SMark a) = SMark $ renameLabel f t a
+    renameLabel f t (SAddress a) = SAddress $ renameLabel f t a
+    renameLabel f t (SRegister a) = SRegister $ renameLabel f t a
 
-instance SSMPost SSMOperation where
-    renameLabel _ _ o = o
+instance SSMPost SSMLoad where
+    renameLabel f t (LConstant a) = LConstant $ renameLabel f t a
+    renameLabel f t (LStack a) = LStack $ renameLabel f t a
+    renameLabel f t (LHeap a) = LHeap $ renameLabel f t a
+    renameLabel f t (LMark a) = LMark $ renameLabel f t a
+    renameLabel f t (LAddress a) = LAddress $ renameLabel f t a
+    renameLabel f t (LRegister a) = LRegister $ renameLabel f t a
+    renameLabel f t (LRegisterFromRegister a1 a2) = LRegisterFromRegister (renameLabel f t a1) (renameLabel f t a2)
+    renameLabel f t (LStackAddress a) = LStackAddress $ renameLabel f t a
+    renameLabel f t (LMarkAddress a) = LMarkAddress $ renameLabel f t a
+    renameLabel f t (LAddressAddress a) = LAddressAddress $ renameLabel f t a
 
 instance SSMPost SSMControl where
-
-instance SSMPost SSMIO where
-    renameLabel _ _ io = io
+    renameLabel f t (CBranchEq a) = CBranchEq $ renameLabel f t a
+    renameLabel f t (CBranchNeq a) = CBranchNeq $ renameLabel f t a
+    renameLabel f t (CBranchLt a) = CBranchLt $ renameLabel f t a
+    renameLabel f t (CBranchGt a) = CBranchGt $ renameLabel f t a
+    renameLabel f t (CBranchLe a) = CBranchLe $ renameLabel f t a
+    renameLabel f t (CBranchGe a) = CBranchGe $ renameLabel f t a
+    renameLabel f t (CBranchAlways a) = CBranchAlways $ renameLabel f t a
+    renameLabel f t (CBranchFalse a) = CBranchFalse $ renameLabel f t a
+    renameLabel f t (CBranchTrue a) = CBranchTrue $ renameLabel f t a
+    renameLabel f t (CBranchSubroutine a) = CBranchSubroutine $ renameLabel f t a
+    renameLabel f t (CLink a) = CLink $ renameLabel f t a
+    renameLabel f t (CAdjustSP a) = CAdjustSP $ renameLabel f t a
+    renameLabel _ _ c = c
 
 instance SSMPost SSMArgument where
-    renameLabel f t (ALabel lbl) = if f == "lbl" then ALabel t else ALabel lbl
+    renameLabel f t (ALabel lbl) = ALabel $ renameLabel f t lbl
     renameLabel _ _ a = a
+
+instance SSMPost SSMLabel where
+    renameLabel f t lbl = if f == lbl then t else lbl
