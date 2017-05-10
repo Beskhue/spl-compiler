@@ -488,11 +488,17 @@ genExpression (AST.ExprFunCall i args, p) = do
     where
         genPrint :: Checker.Type -> Gen ()
         genPrint Checker.TBool = do
-            push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ANumber 4) (Just "start print bool")
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 1) Nothing -- True
-            push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ANumber 2) Nothing
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 0) Nothing -- False
-            push $ SSMLine Nothing (Just $ IIO IOPrintInt) (Just "end print bool")
+            push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ANumber 18) (Just "start print bool")
+            genPrintChar 'T'
+            genPrintChar 'r'
+            genPrintChar 'u'
+            genPrintChar 'e'
+            push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ANumber 20) Nothing
+            genPrintChar 'F'
+            genPrintChar 'a'
+            genPrintChar 'l'
+            genPrintChar 's'
+            genPrintChar 'e'
         genPrint Checker.TInt = push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
         genPrint Checker.TChar = push $ SSMLine Nothing (Just $ IIO IOPrintChar) Nothing
         genPrint (Checker.TTuple t1 t2) = do
@@ -555,7 +561,7 @@ genConstant :: AST.Constant -> Gen ()
 genConstant (AST.ConstInt i, _) = push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber i) Nothing
 genConstant (AST.ConstChar c, _) = push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ Char.digitToInt c) Nothing
 genConstant (AST.ConstBool b, _) = let n = if b then -1 else 0 in
-    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ n) Nothing
 genConstant (AST.ConstEmptyList, _) = do
         push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
         push $ SSMLine Nothing (Just $ IStore SHeap) Nothing
