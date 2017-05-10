@@ -228,7 +228,9 @@ instance Display SSMIO where
 --------------------------------------------------------------------------------
 
 type AddressOffset = Int
-type VariableScope = Map.Map String (Maybe AddressOffset)
+data Scope = SGlobal | SLocal
+             deriving (Show, Eq)
+type VariableScope = Map.Map String AddressOffset
 type VariableScopes = Stack.Stack VariableScope
 
 emptyVariableScopes :: VariableScopes
@@ -265,17 +267,19 @@ push l = do
     st <- get
     put st {ssm = ssm st ++ [l]}
 
-getVariable :: String -> Gen (Maybe (Maybe AddressOffset))
+getVariable :: String -> Gen (Maybe (Scope, AddressOffset))
 getVariable s = do
     scopes <- ask
-    return $ getVariable' scopes s
+    return $ getVariable' 0 scopes s
     where
-        getVariable' :: VariableScopes -> String -> (Maybe (Maybe AddressOffset))
-        getVariable' scopes s = case Stack.stackPop scopes of
+        getVariable' :: Int -> VariableScopes -> String -> Maybe (Scope, AddressOffset)
+        getVariable' n scopes s = case Stack.stackPop scopes of
             Nothing -> Nothing
             Just (scopes', scope) -> case Map.lookup s scope of
-                Nothing -> getVariable' scopes' s
-                result -> result
+                Nothing -> getVariable' (n + 1) scopes' s
+                Just result -> if n == 0
+                    then Just (SGlobal, result)
+                    else Just (SLocal, result)
 
 --------------------------------------------------------------------------------
 
@@ -300,16 +304,18 @@ genSPL decls = do
             _ -> False) decls
     let varDeclNames = map (\decl -> case decl of (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> Checker.idName i) varDecls
     scopes <- ask
-    let scopes' = Stack.stackPush scopes (Map.fromList [(varDeclName, Nothing) | varDeclName <- varDeclNames])
+    let scopes' = Stack.stackPush scopes (Map.fromList [(varDeclName, idx) | (idx, varDeclName) <- zip [0..] varDeclNames])
     local (const scopes') (liftM id (mapM genDecl varDecls))
     -- First add a statement to branch to the main function
     push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel "main") Nothing
     -- Halt
-    push $ SSMLine Nothing (Just $ IControl CHalt) Nothing
+    push $ SSMLine (Nothing) (Just $ IControl CHalt) Nothing
     -- Process all function declarations
     local (const scopes') (liftM id (mapM genDecl (filter (\decl -> case decl of
         (AST.DeclF _, _) -> True
         _ -> False) decls)))
+    -- Add label to end of PC
+    push $ SSMLine (Just "__end_pc") (Just $ IControl CNop) Nothing
     -- Output generated SSM
     st <- get
     return $ ssm st
@@ -319,24 +325,7 @@ genDecl (AST.DeclV varDecl, _) = genVarDecl varDecl
 genDecl (AST.DeclF funDecl, _) = genFunDecl funDecl
 
 genVarDecl :: AST.VarDecl -> Gen ()
-genVarDecl (AST.VarDeclTyped _ i e, _) = do
-    let lbl = Checker.idName i
-    let lblEnd = "__" ++ lbl ++ "_end"
-    genExpression e
-    -- Update variable "function" at the ldc placeholder, so that we dynamically
-    -- create a function that can place the value currently at the top of the stack
-    -- on the stack again
-    push $ SSMLine Nothing (Just $ ILoad $ LRegisterFromRegister (ARegister $ R5) (ARegister $ RMarkPointer)) Nothing -- copy mark pointer to temp register
-    push $ SSMLine Nothing (Just $ ILoad $ LRegisterFromRegister (ARegister $ RMarkPointer) (ARegister $ RProgramCounter)) Nothing -- copy program counter to mark pointer
-    push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber 8) Nothing -- Store at the ldc location
-    push $ SSMLine Nothing (Just $ ILoad $ LRegisterFromRegister (ARegister $ RMarkPointer) (ARegister $ R5)) Nothing -- Recover original mark pointer value
-    push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel lblEnd) Nothing
-    -- A function placing the value on the stack (updated dynamically in the preceding part)
-    push $ SSMLine (Just lbl) (Just $ ILoad $ LConstant $ ANumber 0) Nothing -- ldc placeholder
-    push $ SSMLine Nothing (Just $ IStore $ SRegister $ ARegister RReturnRegister) Nothing
-    push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
-    -- End of function
-    push $ SSMLine (Just lblEnd) (Just $ IControl CNop) Nothing -- TODO: make more efficient
+genVarDecl (AST.VarDeclTyped _ i e, _) = genExpression e
 
 genFunDecl :: AST.FunDecl -> Gen ()
 genFunDecl (AST.FunDeclTyped i args _ stmts, _) = do
@@ -360,8 +349,10 @@ genExpression :: AST.Expression -> Gen ()
 genExpression (AST.ExprIdentifier i, p) = do
     location <- getVariable $ Checker.idName i
     case location of
-        Just Nothing -> genExpression (AST.ExprFunCall i [], p) -- A global can be treated as a function call
-        Just (Just offset) -> return ()
+        Just (SGlobal, offset) -> do -- Load a global
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "load global " ++ Checker.idName i)
+            push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) (Nothing)
+        Just (SLocal, offset) -> return ()
         Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
 genExpression (AST.ExprFunCall i args, p) = do
     a <- getASTAnnotation
@@ -511,3 +502,6 @@ genPrintChar :: Char -> Gen ()
 genPrintChar c = do
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ AChar c) Nothing
     push $ SSMLine Nothing (Just $ IIO IOPrintChar) Nothing
+
+endPCToStartStackOffset :: Int
+endPCToStartStackOffset = 18
