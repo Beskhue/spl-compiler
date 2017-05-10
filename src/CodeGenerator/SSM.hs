@@ -406,15 +406,15 @@ genStatement (AST.StmtBlock stmts', _) stmts = do
 genStatement (AST.StmtAssignment i e, _) stmts = do
     genExpression e
     location <- getVariable $ Checker.idName i
-    (case location of
+    case location of
         Just (SGlobal, offset) -> do -- Assign to a global
             -- Load the address of the end of the program code
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "assign global " ++ Checker.idName i)
             -- Store the value at the address of (the end of the program code + offset)
-            push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber (endPCToStartStackOffset + offset)) (Nothing)
-        Just (SLocal, offset) -> do
-            push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber $ offset) (Just $ "assign local " ++ Checker.idName i)
-        Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope")
+            push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber (endPCToStartStackOffset + offset)) Nothing
+        Just (SLocal, offset) ->
+            push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber offset) (Just $ "assign local " ++ Checker.idName i)
+        Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
     genStatements stmts
 genStatement (AST.StmtFunCall i args, p) stmts = do
     genExpression (AST.ExprFunCall i args, p)
