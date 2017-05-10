@@ -383,9 +383,21 @@ genStatement (AST.StmtIfElse e s1 s2, _) stmts = do
     push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel endLbl) Nothing
     push $ SSMLine (Just elseLbl) Nothing Nothing
     n' <- local (const (offset + n, scopes)) (genStatement s2 [])
-    push $ SSMLine (Just endLbl) Nothing Nothing
+    push $ SSMLine (Just endLbl) (Just $ IControl CNop) Nothing
     n'' <- local (const (offset + n + n', scopes)) (genStatements stmts)
     return $ n + n' + n''
+genStatement (AST.StmtWhile e s, _) stmts = do
+    startLbl <- getFreshLabel
+    endLbl <- getFreshLabel
+    push $ SSMLine (Just startLbl) (Just $ IControl CNop) Nothing
+    genExpression e
+    push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ALabel endLbl) Nothing
+    n <- genStatements stmts
+    push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel startLbl) Nothing
+    push $ SSMLine (Just endLbl) (Just $ IControl CNop) Nothing
+    (offset, scopes) <- ask
+    n' <- local (const (offset + n, scopes)) (genStatements stmts)
+    return $ n + n'
 genStatement (AST.StmtBlock stmts, _) stmts' = do
     (offset, scopes) <- ask
     n <- local (const (offset, Stack.stackPush scopes emptyVariableScope)) (genStatements stmts)
