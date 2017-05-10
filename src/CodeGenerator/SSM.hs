@@ -124,7 +124,7 @@ data SSMStore = SStack SSMArgument
 instance Display SSMStore where
     display (SStack arg) = "sts " ++ display arg
     display SHeap = "sth"
-    display (SHeapMultiple arg) = "sthm " ++ display arg
+    display (SHeapMultiple arg) = "stmh " ++ display arg
     display (SMark arg) = "stl " ++ display arg
     display (SAddress arg) = "sta " ++ display arg
     display (SRegister arg) = "str " ++ display arg
@@ -462,13 +462,13 @@ genExpression (AST.ExprFunCall i args, p) = do
             push $ SSMLine Nothing (Just $ IStore $ SStack $ ANumber 1) Nothing
             push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber 2) Nothing
             -- Get next address of the list, if it is -1 the list is empty
-            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ 0) Nothing
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
             push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
             -- If the list is empty, skip loop -- jump to clean up
             push $ SSMLine Nothing (Just $ IControl $ CBranchTrue $ ANumber 8) Nothing
             -- Otherwise load the next address of the list
-            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ 0) Nothing
             -- And increment the counter
             push $ SSMLine Nothing (Just $ IControl CSwap) Nothing
             genUtilIncrement
@@ -501,7 +501,7 @@ genExpression (AST.ExprFunCall i args, p) = do
             push $ SSMLine (Just lblStart) (Just $ IStore $ SStack $ ANumber $ 1) Nothing
             push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ 2) Nothing
             -- Get next address of the list, if it is -1 the list is empty
-            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ 0) Nothing
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
             push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
             -- If the list is empty, skip loop -- jump to clean up
@@ -510,12 +510,12 @@ genExpression (AST.ExprFunCall i args, p) = do
             push $ SSMLine (Just lblStart) (Just $ IStore $ SStack $ ANumber $ 1) Nothing
             push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ 2) Nothing
             -- Load value
-            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ 0) Nothing
+            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
             -- Recursively print
             genPrint a
             genPrintChar ','
             -- Load the next address of the list
-            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ 0) Nothing
             -- Jump back to start of loop
             push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel lblStart) Nothing
             -- Clean up
@@ -573,14 +573,7 @@ genBinaryOp (AST.BinaryOpLT, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OL
 genBinaryOp (AST.BinaryOpGT, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OGt) Nothing
 genBinaryOp (AST.BinaryOpLTE, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OLe) Nothing
 genBinaryOp (AST.BinaryOpGTE, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OGe) Nothing
-genBinaryOp (AST.BinaryOpConcat, _) _ _ = do
-    -- Stack points to address of tail; store it on the heap
-    push $ SSMLine Nothing (Just $ IStore SHeap) (Just "start concat")
-    -- Adjust stack to point to the value we want to add
-    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
-    -- Store the value on the stack into the heap
-    push $ SSMLine Nothing (Just $ IStore SHeap) (Just "end concat")
-    -- TODO: push $ SSMLine Nothing (Just $ IStore SMultipleHeap) (Just "concat")
+genBinaryOp (AST.BinaryOpConcat, _) _ _ = push $ SSMLine Nothing (Just $ IStore $ SHeapMultiple $ ANumber 2) (Just "concat")
 genBinaryOp (AST.BinaryOpPlus, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
 genBinaryOp (AST.BinaryOpSubtr, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OSub) Nothing
 genBinaryOp (AST.BinaryOpMult, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OMul) Nothing
