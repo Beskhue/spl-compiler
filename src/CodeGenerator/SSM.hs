@@ -53,13 +53,10 @@ data SSMLine = SSMLine (Maybe SSMLabel) (Maybe SSMInstruction) (Maybe SSMComment
 
 instance Display SSMLine where
     display (SSMLine l i c) =
-        case (l, i, c) of
-            (l@(Just _), Nothing, Nothing) -> displayLabel l
-            _ ->
-                displayLabel l
-                ++ displayInstruction i
-                ++ displayComment c
-                ++ "\n"
+        displayLabel l
+        ++ displayInstruction i
+        ++ displayComment c
+        ++ "\n"
         where
             displayLabel :: Maybe SSMLabel -> String
             displayLabel (Just l) = display l ++ ": "
@@ -372,7 +369,7 @@ genStatement (AST.StmtIf e s, _) stmts = do
     push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ALabel endLbl) Nothing
     (offset, scopes) <- ask
     n <- genStatement s []
-    push $ SSMLine (Just endLbl) Nothing Nothing
+    push $ SSMLine (Just endLbl) (Just $ IControl $ CNop) Nothing
     n' <- local (const (offset + n, scopes)) (genStatements stmts)
     return $ n + n'
 genStatement (AST.StmtIfElse e s1 s2, _) stmts = do
@@ -383,7 +380,7 @@ genStatement (AST.StmtIfElse e s1 s2, _) stmts = do
     (offset, scopes) <- ask
     n <- genStatement s1 []
     push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel endLbl) Nothing
-    push $ SSMLine (Just elseLbl) Nothing Nothing
+    push $ SSMLine (Just elseLbl) (Just $ IControl $ CNop) Nothing
     n' <- local (const (offset + n, scopes)) (genStatement s2 [])
     push $ SSMLine (Just endLbl) (Just $ IControl CNop) Nothing
     n'' <- local (const (offset + n + n', scopes)) (genStatements stmts)
