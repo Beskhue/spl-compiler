@@ -115,6 +115,7 @@ instance Display SSMLoad where
 
 data SSMStore = SStack SSMArgument
               | SHeap
+              | SHeapMultiple SSMArgument
               | SMark SSMArgument
               | SAddress SSMArgument
               | SRegister SSMArgument
@@ -123,6 +124,7 @@ data SSMStore = SStack SSMArgument
 instance Display SSMStore where
     display (SStack arg) = "sts " ++ display arg
     display SHeap = "sth"
+    display (SHeapMultiple arg) = "sthm " ++ display arg
     display (SMark arg) = "stl " ++ display arg
     display (SAddress arg) = "sta " ++ display arg
     display (SRegister arg) = "str " ++ display arg
@@ -660,6 +662,7 @@ instance SSMPost SSMInstruction where
 instance SSMPost SSMStore where
     renameLabel f t (SStack a) = SStack $ renameLabel f t a
     renameLabel f t SHeap = SHeap
+    renameLabel f t (SHeapMultiple a) = SHeapMultiple $ renameLabel f t a
     renameLabel f t (SMark a) = SMark $ renameLabel f t a
     renameLabel f t (SAddress a) = SAddress $ renameLabel f t a
     renameLabel f t (SRegister a) = SRegister $ renameLabel f t a
