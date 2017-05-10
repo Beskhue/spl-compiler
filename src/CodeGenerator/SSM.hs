@@ -574,7 +574,9 @@ genFields fields = liftM id (mapM genField fields) >> return ()
     where
         genField :: AST.Field -> Gen ()
         genField (AST.FieldHd, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
-        genField (AST.FieldTl, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ 0) Nothing
+        genField (AST.FieldTl, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) Nothing
+        genField (AST.FieldFst, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) Nothing
+        genField (AST.FieldSnd, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
 
 genConstant :: AST.Constant -> Gen ()
 genConstant (AST.ConstInt i, _) = push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber i) Nothing
