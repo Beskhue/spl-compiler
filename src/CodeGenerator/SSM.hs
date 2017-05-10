@@ -270,16 +270,14 @@ push l = do
 getVariable :: String -> Gen (Maybe (Scope, AddressOffset))
 getVariable s = do
     scopes <- ask
-    return $ getVariable' 0 scopes s
+    return $ getVariable' scopes s
     where
-        getVariable' :: Int -> VariableScopes -> String -> Maybe (Scope, AddressOffset)
-        getVariable' n scopes s = case Stack.stackPop scopes of
+        getVariable' :: VariableScopes -> String -> Maybe (Scope, AddressOffset)
+        getVariable' scopes s = case Stack.stackPop scopes of
             Nothing -> Nothing
             Just (scopes', scope) -> case Map.lookup s scope of
-                Nothing -> getVariable' (n + 1) scopes' s
-                Just result -> if n == 0
-                    then Just (SGlobal, result)
-                    else Just (SLocal, result)
+                Nothing -> getVariable' scopes' s
+                Just result -> Just (if Stack.stackIsEmpty scopes then SGlobal else SLocal, result)
 
 --------------------------------------------------------------------------------
 
@@ -333,7 +331,14 @@ genFunDecl (AST.FunDeclTyped i args _ stmts, _) = do
             (Just $ Checker.idName i)
             (Just $ IControl $ CLink $ ANumber $ length args)
             Nothing
-        liftM id (mapM genStatement stmts)
+
+        -- Calculate new scope
+        let scope = [(Checker.idName arg, -offset) | (arg, offset) <- zip args [2..]]
+        -- Add to old scope
+        scopes <- ask
+        let scopes' = Stack.stackPush scopes (Map.fromList scope)
+
+        local (const scopes') (liftM id (mapM genStatement stmts))
         push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
         push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
 
@@ -354,11 +359,11 @@ genExpression (AST.ExprIdentifier i, p) = do
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "load global " ++ Checker.idName i)
             -- Load the value at the address of (the end of the program code + offset)
             push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) (Nothing)
-        Just (SLocal, offset) -> return ()
+        Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber $ offset) (Just $ "load local " ++ Checker.idName i)
         Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
 genExpression (AST.ExprFunCall i args, p) = do
     a <- getASTAnnotation
-    liftM id (mapM genExpression args)
+    liftM id (mapM genExpression (reverse args))
     case Checker.idName i of
         "print" -> case Map.lookup p a of Just (Checker.TFunction [t] _) -> genPrint t
         "isEmpty" -> do
@@ -390,8 +395,11 @@ genExpression (AST.ExprFunCall i args, p) = do
         _ -> do
             -- Jump to function
             push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel $ Checker.idName i) Nothing
+            -- Clean up stack
+            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ - length args) Nothing
             -- Load returned value
             push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
+
     where
         genPrint :: Checker.Type -> Gen ()
         genPrint Checker.TBool = do
