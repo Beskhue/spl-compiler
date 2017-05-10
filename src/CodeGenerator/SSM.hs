@@ -333,6 +333,7 @@ genVarDecl (AST.VarDeclTyped _ i e, _) = do
     push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel lblEnd) Nothing
     -- A function placing the value on the stack (updated dynamically in the preceding part)
     push $ SSMLine (Just lbl) (Just $ ILoad $ LConstant $ ANumber 0) Nothing -- ldc placeholder
+    push $ SSMLine Nothing (Just $ IStore $ SRegister $ ARegister RReturnRegister) Nothing
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
     -- End of function
     push $ SSMLine (Just lblEnd) (Just $ IControl CNop) Nothing -- TODO: make more efficient
@@ -356,6 +357,12 @@ genStatement (AST.StmtReturn e, _) = do
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
 
 genExpression :: AST.Expression -> Gen ()
+genExpression (AST.ExprIdentifier i, p) = do
+    location <- getVariable $ Checker.idName i
+    case location of
+        Just Nothing -> genExpression (AST.ExprFunCall i [], p) -- A global can be treated as a function call
+        Just (Just offset) -> return ()
+        Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
 genExpression (AST.ExprFunCall i args, p) = do
     a <- getASTAnnotation
     liftM id (mapM genExpression args)
