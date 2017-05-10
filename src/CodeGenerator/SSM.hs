@@ -126,6 +126,7 @@ instance Display SSMStore where
 data SSMArgument = ALabel SSMLabel
                  | ARegister SSMRegister
                  | ANumber Int
+                 | AChar Char
                  | AText String
                  | AColor String
                    deriving (Show, Eq)
@@ -134,6 +135,7 @@ instance Display SSMArgument where
     display (ALabel l) = display l
     display (ARegister r) = display r
     display (ANumber n) = show n
+    display (AChar c) = show $ Char.ord c
     display (AText s) = s
     display (AColor s) = s
 
@@ -224,7 +226,8 @@ instance Display SSMIO where
 --------------------------------------------------------------------------------
 
 data GenState = GenState { ssm :: SSM,
-                           astAnnotation :: Checker.ASTAnnotation }
+                           astAnnotation :: Checker.ASTAnnotation,
+                           labelSupply :: Int}
                     deriving (Show)
 
 type Gen a = ExceptT String (State GenState) a
@@ -232,12 +235,19 @@ type Gen a = ExceptT String (State GenState) a
 runGen :: Gen a -> Checker.ASTAnnotation -> (Either String a, GenState)
 runGen g astAnnotation = runState (runExceptT g) initGenState
     where
-        initGenState = GenState {ssm = [], astAnnotation = astAnnotation}
+        initGenState = GenState {ssm = [], astAnnotation = astAnnotation, labelSupply = 0}
 
 getASTAnnotation :: Gen Checker.ASTAnnotation
 getASTAnnotation = do
     st <- get
     return $ astAnnotation st
+
+getFreshLabel :: Gen String
+getFreshLabel = do
+    st <- get
+    let i = labelSupply st
+    put st {labelSupply = i + 1}
+    return $ "__lbl_" ++ show i
 
 push :: SSMLine -> Gen ()
 push l = do
@@ -297,16 +307,7 @@ genExpression (AST.ExprFunCall i args, p) = do
     a <- getASTAnnotation
     liftM id (mapM genExpression args)
     case Checker.idName i of
-        "print" -> case Map.lookup p a of
-            Just (Checker.TFunction [Checker.TBool] _) -> do
-                push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ANumber 4) (Just "start print bool")
-                push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 1) Nothing -- True
-                push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ANumber 2) Nothing
-                push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 0) Nothing -- False
-                push $ SSMLine Nothing (Just $ IIO IOPrintInt) (Just "end print bool")
-            Just (Checker.TFunction [Checker.TInt] _) -> push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
-            Just (Checker.TFunction [Checker.TChar] _) -> push $ SSMLine Nothing (Just $ IIO IOPrintChar) Nothing
-            t -> throwError $ "No overloaded version of print with this type: " ++ show t
+        "print" -> case Map.lookup p a of Just (Checker.TFunction [t] _) -> genPrint t
         "isEmpty" -> do
             -- Get next address of the list, if it is -1 the list is empty
             push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) (Just "start isEmpty")
@@ -338,6 +339,46 @@ genExpression (AST.ExprFunCall i args, p) = do
             push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel $ Checker.idName i) Nothing
             -- Load returned value
             push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
+    where
+        genPrint :: Checker.Type -> Gen ()
+        genPrint Checker.TBool = do
+            push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ANumber 4) (Just "start print bool")
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 1) Nothing -- True
+            push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ANumber 2) Nothing
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 0) Nothing -- False
+            push $ SSMLine Nothing (Just $ IIO IOPrintInt) (Just "end print bool")
+        genPrint Checker.TInt = push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
+        genPrint Checker.TChar = push $ SSMLine Nothing (Just $ IIO IOPrintChar) Nothing
+        genPrint (Checker.TList a) = do
+            lblStart <- getFreshLabel
+            lblCleanUp <- getFreshLabel
+            genPrintChar '['
+            -- Copy heap address
+            push $ SSMLine (Just lblStart) (Just $ IStore $ SStack $ ANumber $ 1) Nothing
+            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ 2) Nothing
+            -- Get next address of the list, if it is -1 the list is empty
+            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
+            -- If the list is empty, skip loop -- jump to clean up
+            push $ SSMLine Nothing (Just $ IControl $ CBranchTrue $ ALabel lblCleanUp) Nothing
+            -- Otherwise load the value of the list, first copy heap address again
+            push $ SSMLine (Just lblStart) (Just $ IStore $ SStack $ ANumber $ 1) Nothing
+            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ 2) Nothing
+            -- Load value
+            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ 0) Nothing
+            -- Recursively print
+            genPrint a
+            genPrintChar ','
+            -- Load the next address of the list
+            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
+            -- Jump back to start of loop
+            push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel lblStart) Nothing
+            -- Clean up
+            push $ SSMLine (Just lblCleanUp) (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
+            genPrintChar ']'
+        genPrint (Checker.TVar _) = push $ SSMLine Nothing (Just $ IControl CNop) Nothing -- Todo: make more efficient
+
 genExpression (AST.ExprConstant c, _) = genConstant c
 genExpression (AST.ExprUnaryOp op e, _) = do
     genExpression e
@@ -404,3 +445,8 @@ genUtilIncrement :: Gen ()
 genUtilIncrement = do -- Code takes 3 bytes
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 1) Nothing
     push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+
+genPrintChar :: Char -> Gen ()
+genPrintChar c = do
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ AChar c) Nothing
+    push $ SSMLine Nothing (Just $ IIO IOPrintChar) Nothing
