@@ -392,26 +392,39 @@ genStatement (AST.StmtWhile e s, _) stmts = do
     push $ SSMLine (Just startLbl) (Just $ IControl CNop) Nothing
     genExpression e
     push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ALabel endLbl) Nothing
-    n <- genStatements stmts
+    n <- genStatement s []
     push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel startLbl) Nothing
     push $ SSMLine (Just endLbl) (Just $ IControl CNop) Nothing
     (offset, scopes) <- ask
     n' <- local (const (offset + n, scopes)) (genStatements stmts)
     return $ n + n'
-genStatement (AST.StmtBlock stmts, _) stmts' = do
+genStatement (AST.StmtBlock stmts', _) stmts = do
     (offset, scopes) <- ask
-    n <- local (const (offset, Stack.stackPush scopes emptyVariableScope)) (genStatements stmts)
-    n' <- local (const (offset + n, scopes)) (genStatements stmts')
+    n <- local (const (offset, Stack.stackPush scopes emptyVariableScope)) (genStatements stmts')
+    n' <- local (const (offset + n, scopes)) (genStatements stmts)
     return $ n + n'
+genStatement (AST.StmtAssignment i e, _) stmts = do
+    genExpression e
+    location <- getVariable $ Checker.idName i
+    (case location of
+        Just (SGlobal, offset) -> do -- Assign to a global
+            -- Load the address of the end of the program code
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "assign global " ++ Checker.idName i)
+            -- Load the value at the address of (the end of the program code + offset)
+            push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber (endPCToStartStackOffset + offset)) (Nothing)
+        Just (SLocal, offset) -> do
+            push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber $ offset) (Just $ "assign local " ++ Checker.idName i)
+        Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope")
+    genStatements stmts
 genStatement (AST.StmtFunCall i args, p) stmts = do
     genExpression (AST.ExprFunCall i args, p)
-    return 0
+    genStatements stmts
 genStatement (AST.StmtReturn e, _) stmts = do
     genExpression e
     push $ SSMLine Nothing (Just $ IStore $ SRegister $ ARegister RReturnRegister) Nothing
     push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
-    return 0
+    genStatements stmts
 
 genExpression :: AST.Expression -> Gen ()
 genExpression (AST.ExprIdentifier i, p) = do
