@@ -336,8 +336,6 @@ genExpression (AST.ExprFunCall i args, p) = do
         _ -> do
             -- Jump to function
             push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel $ Checker.idName i) Nothing
-            -- Decrement stack pointer
-            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
             -- Load returned value
             push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
 genExpression (AST.ExprConstant c, _) = genConstant c
