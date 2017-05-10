@@ -419,9 +419,11 @@ genStatement (AST.StmtAssignment i e, _) stmts = do
 genStatement (AST.StmtFunCall i args, p) stmts = do
     genExpression (AST.ExprFunCall i args, p)
     genStatements stmts
-genStatement (AST.StmtReturn e, _) stmts = do
+genStatement (AST.StmtReturn e, p) stmts = do
     genExpression e
     push $ SSMLine Nothing (Just $ IStore $ SRegister $ ARegister RReturnRegister) Nothing
+    genStatement (AST.StmtReturnVoid, p) stmts
+genStatement (AST.StmtReturnVoid, _) stmts = do
     push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
     genStatements stmts
