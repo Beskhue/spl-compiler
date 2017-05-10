@@ -436,14 +436,16 @@ genExpression (AST.ExprIdentifier i, p) = do
             -- Load the address of the end of the program code
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "load global " ++ Checker.idName i)
             -- Load the value at the address of (the end of the program code + offset)
-            push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) (Nothing)
-        Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber $ offset) (Just $ "load local " ++ Checker.idName i)
+            push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) Nothing
+        Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber offset) (Just $ "load local " ++ Checker.idName i)
         Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
 genExpression (AST.ExprFunCall i args, p) = do
     a <- getASTAnnotation
     liftM id (mapM genExpression (reverse args))
     case Checker.idName i of
-        "print" -> case Map.lookup p a of Just (Checker.TFunction [t] _) -> genPrint t
+        "print" -> do
+            case Map.lookup p a of Just (Checker.TFunction [t] _) -> genPrint t
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
         "isEmpty" -> do
             -- Get next address of the list, if it is -1 the list is empty
             push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) (Just "start isEmpty")
@@ -452,20 +454,20 @@ genExpression (AST.ExprFunCall i args, p) = do
         "length" -> do
             -- Start with 0 length
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 0) (Just "start length")
-            push $ SSMLine Nothing (Just $ IControl $ CSwap) Nothing
+            push $ SSMLine Nothing (Just $ IControl CSwap) Nothing
             -- Copy heap address
-            push $ SSMLine Nothing (Just $ IStore $ SStack $ ANumber $ 1) Nothing
-            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ 2) Nothing
+            push $ SSMLine Nothing (Just $ IStore $ SStack $ ANumber 1) Nothing
+            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber 2) Nothing
             -- Get next address of the list, if it is -1 the list is empty
             push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
             push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
             -- If the list is empty, skip loop -- jump to clean up
-            push $ SSMLine Nothing (Just $ IControl $ CBranchTrue $ ANumber $ 8) Nothing
+            push $ SSMLine Nothing (Just $ IControl $ CBranchTrue $ ANumber 8) Nothing
             -- Otherwise load the next address of the list
             push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
             -- And increment the counter
-            push $ SSMLine Nothing (Just $ IControl $ CSwap) Nothing
+            push $ SSMLine Nothing (Just $ IControl CSwap) Nothing
             genUtilIncrement
             push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ANumber $ -20) Nothing
             -- Clean up
