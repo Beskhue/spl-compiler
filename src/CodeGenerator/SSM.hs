@@ -317,7 +317,7 @@ genExpression (AST.ExprFunCall i args, p) = do
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 0) (Just "start length")
             push $ SSMLine Nothing (Just $ IControl $ CSwap) Nothing
             -- Copy heap address
-            push $ SSMLine Nothing (Just $ IStore $ SStack $ ANumber $ 1) (Just "start length")
+            push $ SSMLine Nothing (Just $ IStore $ SStack $ ANumber $ 1) Nothing
             push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ 2) Nothing
             -- Get next address of the list, if it is -1 the list is empty
             push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
