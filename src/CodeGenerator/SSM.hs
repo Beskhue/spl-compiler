@@ -350,7 +350,9 @@ genExpression (AST.ExprIdentifier i, p) = do
     location <- getVariable $ Checker.idName i
     case location of
         Just (SGlobal, offset) -> do -- Load a global
+            -- Load the address of the end of the program code
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "load global " ++ Checker.idName i)
+            -- Load the value at the address of (the end of the program code + offset)
             push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) (Nothing)
         Just (SLocal, offset) -> return ()
         Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
