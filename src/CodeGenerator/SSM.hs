@@ -358,7 +358,7 @@ genStatement :: AST.Statement -> [AST.Statement] -> Gen Int
 genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e, _), _) stmts = do
     genExpression e
     (offset, scopes) <- ask
-    push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + 1)) Nothing
+    push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + 1)) (Just $ "declare local " ++ Checker.idName i)
     case Stack.stackPop scopes of
         Just (scopes', scope) -> do
             let scope' = Map.insert (Checker.idName i) (offset + 1) scope
