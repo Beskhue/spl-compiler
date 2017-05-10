@@ -162,7 +162,7 @@ emptyCtx = TypeCtx emptyMap
 
 builtInCtx :: TypeCtx
 builtInCtx = TypeCtx $ Map.fromList [
-    ("print", let t = TVar "a" in Scheme ["a"] (TFunction [t] TVoid)),
+    ("print", let t = TVar "a" in Scheme ["a"] (TFunction [t] TBool)),
     ("isEmpty", let t = TList (TVar "a") in Scheme ["a"] (TFunction [t] TBool)),
     ("length", let t = TList (TVar "a") in Scheme ["a"] (TFunction [t] TInt))
     ]
