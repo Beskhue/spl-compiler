@@ -320,9 +320,9 @@ genSPL decls = do
         _ -> False) decls)))
     -- Add label to end of PC
     push $ SSMLine (Just "__end_pc") (Just $ IControl CNop) Nothing
-    -- Output generated SSM
+    -- Optimize and output generated SSM
     st <- get
-    return $ ssm st
+    return $ optimize $ ssm st
 
 genDecl :: AST.Decl -> Gen ()
 genDecl (AST.DeclV varDecl, _) = genVarDecl varDecl
@@ -616,3 +616,46 @@ instance Locals AST.Statement where
     numLocals (AST.StmtBlock stmts, _) = numLocals stmts
     numLocals (AST.StmtWhile _ s, _) = numLocals s
     numLocals _ = 0
+
+--------------------------------------------------------------------------------
+
+optimize :: SSM -> SSM
+optimize = removeNops []
+    where
+        removeNops :: SSM -> SSM -> SSM
+        removeNops accum [] = accum
+        removeNops accum [ssm] = removeNops (accum ++ [ssm]) []
+        removeNops accum (ssm1:ssm2:ssms) =
+            case ssm1 of
+                SSMLine (Just lbl) (Just (IControl CNop)) _ ->
+                    case ssm2 of
+                        SSMLine Nothing i c -> removeNops accum (SSMLine (Just lbl) i c : ssms)
+                        SSMLine (Just lbl') i c -> removeNops (renameLabel lbl lbl' accum) (renameLabel lbl lbl' (ssm2 : ssms))
+                _ -> removeNops (accum ++ [ssm1]) (ssm2 : ssms)
+
+class SSMPost a where
+    renameLabel :: String -> String -> a -> a
+    renameLabel _ _ a = a
+
+instance SSMPost SSM where
+    renameLabel f t = map (renameLabel f t)
+
+instance SSMPost SSMLine where
+
+instance SSMPost SSMInstruction where
+
+instance SSMPost SSMLoad where
+
+instance SSMPost SSMStore where
+
+instance SSMPost SSMOperation where
+    renameLabel _ _ o = o
+
+instance SSMPost SSMControl where
+
+instance SSMPost SSMIO where
+    renameLabel _ _ io = io
+
+instance SSMPost SSMArgument where
+    renameLabel f t (ALabel lbl) = if f == "lbl" then ALabel t else ALabel lbl
+    renameLabel _ _ a = a
