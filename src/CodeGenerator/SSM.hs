@@ -281,18 +281,44 @@ genDet annotation spl =
 
 genSPL :: AST.SPL -> Gen SSM
 genSPL decls = do
+    -- Process all variable declarations
+    liftM id (mapM genDecl (filter (\decl -> case decl of
+        (AST.DeclV _, _) -> True
+        _ -> False) decls))
     -- First add a statement to branch to the main function
     push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel "main") Nothing
     -- Halt
     push $ SSMLine Nothing (Just $ IControl CHalt) Nothing
-    -- Process all declarations
-    liftM id (mapM genDecl decls)
+    -- Process all function declarations
+    liftM id (mapM genDecl (filter (\decl -> case decl of
+        (AST.DeclF _, _) -> True
+        _ -> False) decls))
     -- Output generated SSM
     st <- get
     return $ ssm st
 
 genDecl :: AST.Decl -> Gen ()
+genDecl (AST.DeclV varDecl, _) = genVarDecl varDecl
 genDecl (AST.DeclF funDecl, _) = genFunDecl funDecl
+
+genVarDecl :: AST.VarDecl -> Gen ()
+genVarDecl (AST.VarDeclTyped _ i e, _) = do
+    let lbl = Checker.idName i
+    let lblEnd = "__" ++ lbl ++ "_end"
+    genExpression e
+    -- Update variable "function" at the ldc placeholder, so that we dynamically
+    -- create a function that can place the value currently at the top of the stack
+    -- on the stack again
+    push $ SSMLine Nothing (Just $ ILoad $ LRegisterFromRegister (ARegister $ R5) (ARegister $ RMarkPointer)) Nothing -- copy mark pointer to temp register
+    push $ SSMLine Nothing (Just $ ILoad $ LRegisterFromRegister (ARegister $ RMarkPointer) (ARegister $ RProgramCounter)) Nothing -- copy program counter to mark pointer
+    push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber 8) Nothing -- Store at the ldc location
+    push $ SSMLine Nothing (Just $ ILoad $ LRegisterFromRegister (ARegister $ RMarkPointer) (ARegister $ R5)) Nothing -- Recover original mark pointer value
+    push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel lblEnd) Nothing
+    -- A function placing the value on the stack (updated dynamically in the preceding part)
+    push $ SSMLine (Just lbl) (Just $ ILoad $ LConstant $ ANumber 0) Nothing -- ldc placeholder
+    push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
+    -- End of function
+    push $ SSMLine (Just lblEnd) (Just $ IControl CNop) Nothing -- TODO: make more efficient
 
 genFunDecl :: AST.FunDecl -> Gen ()
 genFunDecl (AST.FunDeclTyped i args _ stmts, _) = do
@@ -442,6 +468,7 @@ genBinaryOp (AST.BinaryOpConcat, _) _ _ = do
     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
     -- Store the value on the stack into the heap
     push $ SSMLine Nothing (Just $ IStore SHeap) (Just "end concat")
+    -- TODO: push $ SSMLine Nothing (Just $ IStore SMultipleHeap) (Just "concat")
 genBinaryOp (AST.BinaryOpPlus, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
 genBinaryOp (AST.BinaryOpSubtr, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OSub) Nothing
 genBinaryOp (AST.BinaryOpMult, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OMul) Nothing
