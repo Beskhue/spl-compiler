@@ -301,7 +301,7 @@ genExpression (AST.ExprFunCall i args, p) = do
             Just (Checker.TFunction [Checker.TBool] _) -> do
                 push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ANumber 4) (Just "start print bool")
                 push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 1) Nothing -- True
-                push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ANumber 1) Nothing
+                push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ANumber 2) Nothing
                 push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 0) Nothing -- False
                 push $ SSMLine Nothing (Just $ IIO IOPrintInt) (Just "end print bool")
             Just (Checker.TFunction [Checker.TInt] _) -> push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
