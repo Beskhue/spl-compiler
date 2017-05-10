@@ -548,7 +548,7 @@ genExpression (AST.ExprFunCall i args, p) = do
             -- If the list is empty, skip loop -- jump to clean up
             push $ SSMLine Nothing (Just $ IControl $ CBranchTrue $ ALabel lblCleanUp) Nothing
             -- Otherwise load the value of the list, first copy heap address again
-            push $ SSMLine (Just lblStart) (Just $ IStore $ SStack $ ANumber $ 1) Nothing
+            push $ SSMLine Nothing (Just $ IStore $ SStack $ ANumber $ 1) Nothing
             push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ 2) Nothing
             -- Load value
             push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
