@@ -392,8 +392,16 @@ tInfExpr t (AST.ExprIdentifierField id fields, _) = do
                     tVar <- newTypeVar "fld"
                     s <- mgu (Just p) t' (TList tVar)
                     tTraverseFields t (apply s (TList tVar)) fields
-                (AST.FieldFst, p) -> undefined
-                (AST.FieldSnd, p) -> undefined
+                (AST.FieldFst, p) -> do
+                    tVar1 <- newTypeVar "fld"
+                    tVar2 <- newTypeVar "fld"
+                    s <- mgu (Just p) t' (TTuple tVar1 tVar2)
+                    tTraverseFields t (apply s tVar1) fields
+                (AST.FieldSnd, p) -> do
+                    tVar1 <- newTypeVar "fld"
+                    tVar2 <- newTypeVar "fld"
+                    s <- mgu (Just p) t' (TTuple tVar1 tVar2)
+                    tTraverseFields t (apply s tVar2) fields
 
 tInfExpr t (AST.ExprFunCall id args, p) = do
     t1 <- tInfId id
