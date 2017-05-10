@@ -249,15 +249,16 @@ emptyVariableScopes = Stack.stackNew
 
 data GenState = GenState { ssm :: SSM,
                            astAnnotation :: Checker.ASTAnnotation,
-                           labelSupply :: Int}
+                           labelSupply :: Int,
+                           localAddressOffset :: AddressOffset}
                     deriving (Show)
 
-type Gen a = ExceptT String (ReaderT (AddressOffset, VariableScopes) (State GenState)) a
+type Gen a = ExceptT String (ReaderT VariableScopes (State GenState)) a
 
 runGen :: Gen a -> Checker.ASTAnnotation -> (Either String a, GenState)
-runGen g astAnnotation = runState (runReaderT (runExceptT g) (0, emptyVariableScopes)) initGenState
+runGen g astAnnotation = runState (runReaderT (runExceptT g) emptyVariableScopes) initGenState
     where
-        initGenState = GenState {ssm = [], astAnnotation = astAnnotation, labelSupply = 0}
+        initGenState = GenState {ssm = [], astAnnotation = astAnnotation, labelSupply = 0, localAddressOffset = 0}
 
 getASTAnnotation :: Gen Checker.ASTAnnotation
 getASTAnnotation = do
@@ -278,7 +279,7 @@ push l = do
 
 getVariable :: String -> Gen (Maybe (Scope, AddressOffset))
 getVariable s = do
-    (_, scopes) <- ask
+    scopes <- ask
     return $ getVariable' scopes s
     where
         getVariable' :: VariableScopes -> String -> Maybe (Scope, AddressOffset)
@@ -287,6 +288,21 @@ getVariable s = do
             Just (scopes', scope) -> case Map.lookup s scope of
                 Nothing -> getVariable' scopes' s
                 Just result -> Just (if Stack.stackIsEmpty scopes' then SGlobal else SLocal, result)
+
+getLocalAddressOffset :: Gen Int
+getLocalAddressOffset = do
+    st <- get
+    return $ localAddressOffset st
+
+incrementLocalAddressOffset :: Gen ()
+incrementLocalAddressOffset = do
+    st <- get
+    put st {localAddressOffset = localAddressOffset st + 1}
+
+resetLocalAddressOffset :: Gen ()
+resetLocalAddressOffset = do
+    st <- get
+    put st {localAddressOffset = 0}
 
 --------------------------------------------------------------------------------
 
@@ -310,15 +326,15 @@ genSPL decls = do
             (AST.DeclV _, _) -> True
             _ -> False) decls
     let varDeclNames = map (\decl -> case decl of (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> Checker.idName i) varDecls
-    (_, scopes) <- ask
+    scopes <- ask
     let scopes' = Stack.stackPush scopes (Map.fromList [(varDeclName, idx) | (idx, varDeclName) <- zip [0..] varDeclNames])
-    local (const (0, scopes')) (liftM id (mapM genDecl varDecls))
+    local (const scopes') (liftM id (mapM genDecl varDecls))
     -- First add a statement to branch to the main function
     push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel "main") Nothing
     -- Halt
-    push $ SSMLine (Nothing) (Just $ IControl CHalt) Nothing
+    push $ SSMLine Nothing (Just $ IControl CHalt) Nothing
     -- Process all function declarations
-    local (const (0, scopes')) (liftM id (mapM genDecl (filter (\decl -> case decl of
+    local (const scopes') (liftM id (mapM genDecl (filter (\decl -> case decl of
         (AST.DeclF _, _) -> True
         _ -> False) decls)))
     -- Add label to end of PC
@@ -336,6 +352,7 @@ genVarDecl (AST.VarDeclTyped _ i e, _) = genExpression e
 
 genFunDecl :: AST.FunDecl -> Gen ()
 genFunDecl (AST.FunDeclTyped i args _ stmts, _) = do
+        resetLocalAddressOffset
         let nLocals = numLocals stmts
         -- Function entry; reserve memory space for locals
         push $ SSMLine (Just $ Checker.idName i) (Just $ IControl $ CLink $ ANumber nLocals) Nothing
@@ -343,69 +360,61 @@ genFunDecl (AST.FunDeclTyped i args _ stmts, _) = do
         -- Calculate new scope
         let scope = [(Checker.idName arg, -offset) | (arg, offset) <- zip args [2..]]
         -- Add to old scope
-        (_, scopes) <- ask
+        scopes <- ask
         let scopes' = Stack.stackPush scopes (Map.fromList scope)
 
         --local (const (0, scopes')) (liftM id (mapM genStatement stmts))
-        local (const (0, scopes')) (genStatements stmts)
+        local (const scopes') (genStatements stmts)
         push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
         push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
 
-genStatements :: [AST.Statement] -> Gen Int
-genStatements [] = return 0
+genStatements :: [AST.Statement] -> Gen ()
+genStatements [] = return ()
 genStatements (stmt:stmts) = genStatement stmt stmts
 
--- GenStatement returns the number of locals declared, we can use this to keep
--- track of the required local offset of defined local variables
-genStatement :: AST.Statement -> [AST.Statement] -> Gen Int
+genStatement :: AST.Statement -> [AST.Statement] -> Gen ()
 genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e, _), _) stmts = do
     genExpression e
-    (offset, scopes) <- ask
+    offset <- getLocalAddressOffset
+    scopes <- ask
     push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + 1)) (Just $ "declare local " ++ Checker.idName i)
     case Stack.stackPop scopes of
         Just (scopes', scope) -> do
             let scope' = Map.insert (Checker.idName i) (offset + 1) scope
-            n <- local (const (offset + 1, Stack.stackPush scopes' scope')) (genStatements stmts)
-            return $ n + 1
+            incrementLocalAddressOffset
+            local (const $ Stack.stackPush scopes' scope') (genStatements stmts)
 genStatement (AST.StmtIf e s, _) stmts = do
     genExpression e
     endLbl <- getFreshLabel
     push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ALabel endLbl) Nothing
-    (offset, scopes) <- ask
-    n <- genStatement s []
+    genStatement s []
     push $ SSMLine (Just endLbl) (Just $ IControl $ CNop) Nothing
-    n' <- local (const (offset + n, scopes)) (genStatements stmts)
-    return $ n + n'
+    genStatements stmts
 genStatement (AST.StmtIfElse e s1 s2, _) stmts = do
     genExpression e
     elseLbl <- getFreshLabel
     endLbl <- getFreshLabel
     push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ALabel elseLbl) Nothing
-    (offset, scopes) <- ask
-    n <- genStatement s1 []
+    genStatement s1 []
     push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel endLbl) Nothing
     push $ SSMLine (Just elseLbl) (Just $ IControl $ CNop) Nothing
-    n' <- local (const (offset + n, scopes)) (genStatement s2 [])
+    genStatement s2 []
     push $ SSMLine (Just endLbl) (Just $ IControl CNop) Nothing
-    n'' <- local (const (offset + n + n', scopes)) (genStatements stmts)
-    return $ n + n' + n''
+    genStatements stmts
 genStatement (AST.StmtWhile e s, _) stmts = do
     startLbl <- getFreshLabel
     endLbl <- getFreshLabel
     push $ SSMLine (Just startLbl) (Just $ IControl CNop) Nothing
     genExpression e
     push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ALabel endLbl) Nothing
-    n <- genStatement s []
+    genStatement s []
     push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel startLbl) Nothing
     push $ SSMLine (Just endLbl) (Just $ IControl CNop) Nothing
-    (offset, scopes) <- ask
-    n' <- local (const (offset + n, scopes)) (genStatements stmts)
-    return $ n + n'
+    genStatements stmts
 genStatement (AST.StmtBlock stmts', _) stmts = do
-    (offset, scopes) <- ask
-    n <- local (const (offset, Stack.stackPush scopes emptyVariableScope)) (genStatements stmts')
-    n' <- local (const (offset + n, scopes)) (genStatements stmts)
-    return $ n + n'
+    scopes <- ask
+    local (const $ Stack.stackPush scopes emptyVariableScope) (genStatements stmts')
+    genStatements stmts
 genStatement (AST.StmtAssignment i e, _) stmts = do
     genExpression e
     location <- getVariable $ Checker.idName i
