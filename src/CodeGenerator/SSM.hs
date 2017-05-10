@@ -188,7 +188,7 @@ data SSMControl = CBranchEq SSMArgument | CBranchNeq SSMArgument
                 | CJumpSubroutine
                 | CReturn
                 | CLink SSMArgument | CUnlink
-                | CAdjustSP SSMArgument
+                | CAdjustSP SSMArgument | CSwap
                 | CNop | CHalt
                   deriving (Show, Eq)
 
@@ -208,6 +208,7 @@ instance Display SSMControl where
     display (CLink arg) = "link " ++ display arg
     display CUnlink = "unlink"
     display (CAdjustSP arg) = "ajs " ++ display arg
+    display CSwap = "swp"
     display CNop = "nop"
     display CHalt = "halt"
 
@@ -311,6 +312,27 @@ genExpression (AST.ExprFunCall i args, p) = do
             push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) (Just "start isEmpty")
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
             push $ SSMLine Nothing (Just $ ICompute OEq) (Just "end isEmpty")
+        "length" -> do
+            -- Start with 0 length
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 0) (Just "start length")
+            push $ SSMLine Nothing (Just $ IControl $ CSwap) Nothing
+            -- Copy heap address
+            push $ SSMLine Nothing (Just $ IStore $ SStack $ ANumber $ 1) (Just "start length")
+            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ 2) Nothing
+            -- Get next address of the list, if it is -1 the list is empty
+            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
+            -- If the list is empty, skip loop -- jump to clean up
+            push $ SSMLine Nothing (Just $ IControl $ CBranchTrue $ ANumber $ 8) Nothing
+            -- Otherwise load the next address of the list
+            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
+            -- And increment the counter
+            push $ SSMLine Nothing (Just $ IControl $ CSwap) Nothing
+            genUtilIncrement
+            push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ANumber $ -20) Nothing
+            -- Clean up
+            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) (Just "end length")
         _ -> do
             -- Jump to function
             push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel $ Checker.idName i) Nothing
@@ -338,6 +360,10 @@ genConstant (AST.ConstChar c, _) = push $ SSMLine Nothing (Just $ ILoad $ LConst
 genConstant (AST.ConstBool b, _) = let n = if b then -1 else 0 in
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
 genConstant (AST.ConstEmptyList, _) = do
+        push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
+        push $ SSMLine Nothing (Just $ IStore SHeap) Nothing
+        -- Adjust SP to point back
+        push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
         push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
         push $ SSMLine Nothing (Just $ IStore SHeap) Nothing
 
@@ -372,3 +398,11 @@ genBinaryOp (AST.BinaryOpSubtr, _) _ _ = push $ SSMLine Nothing (Just $ ICompute
 genBinaryOp (AST.BinaryOpMult, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OMul) Nothing
 genBinaryOp (AST.BinaryOpDiv, _) _ _ = push $ SSMLine Nothing (Just $ ICompute ODiv) Nothing
 genBinaryOp (AST.BinaryOpMod, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OMod) Nothing
+
+--------------------------------------------------------------------------------
+-- Some utilities
+
+genUtilIncrement :: Gen ()
+genUtilIncrement = do -- Code takes 3 bytes
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 1) Nothing
+    push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
