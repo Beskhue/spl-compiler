@@ -92,6 +92,7 @@ instance Display SSMInstruction where
 data SSMLoad = LConstant SSMArgument
              | LStack SSMArgument
              | LHeap SSMArgument
+             | LHeapMultiple SSMArgument SSMArgument
              | LMark SSMArgument
              | LAddress SSMArgument
              | LRegister SSMArgument
@@ -105,6 +106,7 @@ instance Display SSMLoad where
     display (LConstant arg) = "ldc " ++ display arg
     display (LStack arg) = "lds " ++ display arg
     display (LHeap arg) = "ldh " ++ display arg
+    display (LHeapMultiple arg1 arg2) = "ldmh " ++ display arg1 ++ " " ++ display arg2
     display (LMark arg) = "ldl " ++ display arg
     display (LAddress arg) = "lda " ++ display arg
     display (LRegister arg) = "ldr " ++ display arg
@@ -493,6 +495,14 @@ genExpression (AST.ExprFunCall i args, p) = do
             push $ SSMLine Nothing (Just $ IIO IOPrintInt) (Just "end print bool")
         genPrint Checker.TInt = push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
         genPrint Checker.TChar = push $ SSMLine Nothing (Just $ IIO IOPrintChar) Nothing
+        genPrint (Checker.TTuple t1 t2) = do
+            genPrintChar '('
+            -- Copy heap address
+            push $ SSMLine Nothing (Just $ ILoad $ LHeapMultiple (ANumber 0) (ANumber 2)) Nothing
+            genPrint t1
+            genPrintChar ','
+            genPrint t2
+            genPrintChar ')'
         genPrint (Checker.TList a) = do
             lblStart <- getFreshLabel
             lblCleanUp <- getFreshLabel
@@ -525,9 +535,9 @@ genExpression (AST.ExprFunCall i args, p) = do
 
 genExpression (AST.ExprConstant c, _) = genConstant c
 genExpression (AST.ExprTuple e1 e2, _) = do
-    genExpression e1
     genExpression e2
-    undefined
+    genExpression e1
+    push $ SSMLine Nothing (Just $ IStore $ SHeapMultiple $ ANumber 2) (Just "tuple")
 genExpression (AST.ExprUnaryOp op e, _) = do
     genExpression e
     genUnaryOp op
@@ -664,6 +674,7 @@ instance SSMPost SSMLoad where
     renameLabel f t (LConstant a) = LConstant $ renameLabel f t a
     renameLabel f t (LStack a) = LStack $ renameLabel f t a
     renameLabel f t (LHeap a) = LHeap $ renameLabel f t a
+    renameLabel f t (LHeapMultiple a1 a2) = LHeapMultiple (renameLabel f t a1) (renameLabel f t a2)
     renameLabel f t (LMark a) = LMark $ renameLabel f t a
     renameLabel f t (LAddress a) = LAddress $ renameLabel f t a
     renameLabel f t (LRegister a) = LRegister $ renameLabel f t a
