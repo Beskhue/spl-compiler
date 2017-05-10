@@ -444,6 +444,17 @@ genExpression (AST.ExprIdentifier i, p) = do
             push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) Nothing
         Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber offset) (Just $ "load local " ++ Checker.idName i)
         Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
+genExpression (AST.ExprIdentifierField i f, _) = do
+    location <- getVariable $ Checker.idName i
+    case location of
+        Just (SGlobal, offset) -> do -- Load a global
+            -- Load the address of the end of the program code
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "load global " ++ Checker.idName i)
+            -- Load the value at the address of (the end of the program code + offset)
+            push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) Nothing
+        Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber offset) (Just $ "load local " ++ Checker.idName i)
+        Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
+    genFields f
 genExpression (AST.ExprFunCall i args, p) = do
     a <- getASTAnnotation
     liftM id (mapM genExpression (reverse args))
@@ -556,6 +567,14 @@ genExpression (AST.ExprBinaryOp op e1@(_, p1) e2@(_, p2), _) = do
                     genExpression e1
                     genExpression e2
                     genBinaryOp op t1 t2
+
+
+genFields :: [AST.Field] -> Gen ()
+genFields fields = liftM id (mapM genField fields) >> return ()
+    where
+        genField :: AST.Field -> Gen ()
+        genField (AST.FieldHd, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
+        genField (AST.FieldTl, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ 0) Nothing
 
 genConstant :: AST.Constant -> Gen ()
 genConstant (AST.ConstInt i, _) = push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber i) Nothing
