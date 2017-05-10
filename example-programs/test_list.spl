@@ -1,0 +1,10 @@
+f () {
+    return 3 : 4 : [];
+}
+
+main() {
+    print(length(f()));
+    print(length(1 : 2 : f()));
+    print(isEmpty([]));
+    print(isEmpty([] : []));
+}
