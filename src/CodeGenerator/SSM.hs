@@ -418,6 +418,8 @@ genStatement (AST.StmtAssignment i e, _) stmts = do
     genStatements stmts
 genStatement (AST.StmtFunCall i args, p) stmts = do
     genExpression (AST.ExprFunCall i args, p)
+    -- Ignore return value
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
     genStatements stmts
 genStatement (AST.StmtReturn e, p) stmts = do
     genExpression e
