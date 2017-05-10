@@ -283,7 +283,7 @@ getVariable s = do
             Nothing -> Nothing
             Just (scopes', scope) -> case Map.lookup s scope of
                 Nothing -> getVariable' scopes' s
-                Just result -> Just (if Stack.stackIsEmpty scopes then SGlobal else SLocal, result)
+                Just result -> Just (if Stack.stackIsEmpty scopes' then SGlobal else SLocal, result)
 
 --------------------------------------------------------------------------------
 
