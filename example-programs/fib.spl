@@ -1,12 +1,12 @@
-// Get the nth number in the Fibonacci sequence
-fib (n) :: Int -> Int {
-    if (n == 0) {
-        return 0;
-    } else {
-        if (n == 1 || n == 2) {
-            return 1;
-        } else {
-            return fib(n-1) + fib(n-2);
-        }
+// Output the Fibonacci sequence
+main () {
+    var t1 = 0;
+    var t2 = 1;
+
+    while(True) {
+        print(t2);
+        var h = t1 + t2;
+        t1 = t2;
+        t2 = h;
     }
 }
