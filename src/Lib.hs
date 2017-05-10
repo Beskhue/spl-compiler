@@ -29,7 +29,7 @@ compile = do
         Left e    -> putStrLn $ show e
         Right ts -> case SPLParser.parse ts of
             Left e -> putStrLn $ show e
-            Right ast -> case Checker.check ast of
+            Right ast -> case Checker.check False ast of
                 Left e -> putStrLn $ show e
                 --Right (b, annotation) -> putStrLn $ AST.prettyPrint b ++ "\n\n" ++ show b ++ "\n\n" ++ show (Map.assocs annotation)
                 Right (b, annotation) -> case SSM.gen annotation b of

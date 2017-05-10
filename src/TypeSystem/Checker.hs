@@ -37,14 +37,14 @@ import qualified Data.AST as AST
 
 ------------------------------------------------------------------------------------------------------------------------
 
-check :: AST.SPL -> Either String (AST.SPL, ASTAnnotation)
-check spl = res
+check :: Bool -> AST.SPL -> Either String (AST.SPL, ASTAnnotation)
+check preserveDeclOrder spl = res
     where
-        (res, _) = runTInf $ tInfSPL spl
+        (res, _) = runTInf $ tInfSPL preserveDeclOrder spl
 
-checkDet :: AST.SPL -> (AST.SPL, ASTAnnotation)
-checkDet spl =
-    case check spl of
+checkDet :: Bool -> AST.SPL -> (AST.SPL, ASTAnnotation)
+checkDet preserveDeclOrder spl =
+    case check preserveDeclOrder spl of
         Left err -> Trace.trace (show err) undefined
         Right spl' -> spl'
 
@@ -468,21 +468,30 @@ tInfBinaryOp t (AST.BinaryOpMod, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p)
 
 -- |Perform type inference on the global SPL declarations. Rewrite the AST such that all variables are typed as
 -- completely as possible.
-tInfSPL :: AST.SPL -> TInf (AST.SPL, ASTAnnotation)
-tInfSPL decls = do
+tInfSPL :: Bool -> AST.SPL -> TInf (AST.SPL, ASTAnnotation)
+tInfSPL preserveDeclOrder decls = do
     ctx <- ask
     let deps = tInfSPLGraph decls
     let (graph, vertexToEdge, keyToVertex) = Graph.graphFromEdges deps
-    let scc = reverse $ fst $ Graph.SCC.scc graph -- Calculate strongly connected components in reverse topological order ([(sccId, [keys])])
-    -- Calculate list of strongly connected declarations and the original location of the declarations
+    let (sccTopo, _) = Graph.SCC.scc graph -- Calculate strongly connected components
+    let scc = reverse sccTopo -- Strongly connected components in reverse topological order ([(sccId, [keys])])
+    -- Calculate list of strongly connected declarations and, if declration order is to be preserved, the original location of the declarations
     -- [[(originalIndex, decl)]]
-    let sccDecls = map (map (\vertex -> (\d@(decl, _, _) -> (case elemIndex d deps of Just idx -> idx, decl)) $ vertexToEdge vertex) . snd) scc
+    let sccDecls = if preserveDeclOrder
+        then map (map (\vertex -> (\d@(decl, _, _) -> (case elemIndex d deps of Just idx -> idx, decl)) $ vertexToEdge vertex) . snd) scc
+        else numberAscending $ map (map (\vertex -> let d@(decl, _, _) = vertexToEdge vertex in decl) . snd) scc
     let initCtx = Stack.stackPush ctx builtInCtx -- Create top scope
     spl <- local (const initCtx) (tInfSCCs decls sccDecls)
     s <- substitution
     st <- get
     return (spl, apply s (astAnnotation st))
     where
+        numberAscending :: [[AST.Decl]] -> [[(Int, AST.Decl)]]
+        numberAscending = numberAscending' 0
+            where
+                numberAscending' :: Int -> [[AST.Decl]] -> [[(Int, AST.Decl)]]
+                numberAscending' _ [] = []
+                numberAscending' n (decls:sscs) = zip [n..] decls : numberAscending' (n + length decls) sscs
         addGlobalsToCtx :: ScopedTypeCtx -> AST.SPL -> TInf ScopedTypeCtx
         addGlobalsToCtx ctx [] = return ctx
         addGlobalsToCtx ctx (decl:decls) = do

@@ -8,7 +8,7 @@ import qualified Parser.SPLParser as SPLParser
 import qualified Lexer.Lexer as Lexer
 import TypeSystem.Checker as Checker
 
-parseAndCheckDet = Checker.checkDet . SPLParser.parseDet . Lexer.lexDet "test"
+parseAndCheckDet = fst . Checker.checkDet True . SPLParser.parseDet . Lexer.lexDet "test"
 
 expr = SPLParser.parseDet' SPLParser.pExpression . Lexer.lexDet "test"
 onlyTypeEmptyTInfExpr = Checker.typeInferenceExpr Checker.tInfExprTyped

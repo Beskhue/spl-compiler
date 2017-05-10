@@ -25,6 +25,7 @@ library
                      , Lexer.Lexer
                      , Parser.SPLParser
                      , TypeSystem.Checker
+                     , CodeGenerator.SSM
   build-depends:       base >= 4.7 && < 5
                      , containers
                      , GraphSCC
