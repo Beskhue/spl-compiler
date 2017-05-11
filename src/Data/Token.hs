@@ -37,7 +37,6 @@ instance Show TokenP where
 
 data Operator = OAssignment
               | OPlus
-              | OMultiply
               | ODivide
               | OMod
               | OEq
@@ -88,6 +87,8 @@ data Punctuator = PSeparator
                 | PMapTo
                 | PFunType
                 | PMinus
+                | PAsterisk
+                | PAmpersand
                   deriving (Show, Eq)
 
 data Whitespace = WNewline

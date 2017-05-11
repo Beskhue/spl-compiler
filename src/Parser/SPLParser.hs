@@ -134,7 +134,18 @@ pFunType = (do
     ) <?> "a function type"
 
 pType :: Parser AST.Type
-pType = pTypeBasic <|> pTypeTuple <|> pTypeList <|> pTypeIdentifier
+pType = do
+    t <- pTypeBasic <|> pTypeTuple <|> pTypeList <|> pTypeIdentifier
+    pType' t
+    where
+        pType' :: AST.Type -> Parser AST.Type
+        pType' t@(_, p) = do
+            token <- pPeek
+            case token of
+                TPunctuator PAsterisk -> do
+                    tok token
+                    pType' (AST.TypePointer t, p)
+                _ -> return t
 
 pTypeTuple :: Parser AST.Type
 pTypeTuple = (do
@@ -362,6 +373,8 @@ pUnaryOperator =
             \tp -> case tp of
                 TP (TOperator ONeg) p -> Just (AST.UnaryOpNeg, p)
                 TP (TPunctuator PMinus) p -> Just (AST.UnaryOpSubtr, p)
+                TP (TPunctuator PAmpersand) p -> Just (AST.UnaryOpReference, p)
+                TP (TPunctuator PAsterisk) p -> Just (AST.UnaryOpDereference, p)
                 _ -> Nothing
         ) <|> ( do
             TP _ p <- tok (TPunctuator PParenOpen)
@@ -375,7 +388,6 @@ pBinaryOperator = tokenPrim show advance
     (
         \tp -> case tp of
             TP (TOperator OOr) p -> Just (AST.BinaryOpOr, p)
-            TP (TOperator OAnd) p -> Just (AST.BinaryOpAnd, p)
             TP (TOperator OEq) p -> Just (AST.BinaryOpEq, p)
             TP (TOperator ONEq) p -> Just (AST.BinaryOpNEq, p)
             TP (TOperator OLT) p -> Just (AST.BinaryOpLT, p)
@@ -385,10 +397,14 @@ pBinaryOperator = tokenPrim show advance
             TP (TOperator OConcat) p -> Just (AST.BinaryOpConcat, p)
             TP (TOperator OPlus) p -> Just (AST.BinaryOpPlus, p)
             TP (TPunctuator PMinus) p -> Just (AST.BinaryOpSubtr, p)
-            TP (TOperator OMultiply) p -> Just (AST.BinaryOpMult, p)
+            TP (TPunctuator PAsterisk) p -> Just (AST.BinaryOpMult, p)
             TP (TOperator ODivide) p -> Just (AST.BinaryOpDiv, p)
             TP (TOperator OMod) p -> Just (AST.BinaryOpMod, p)
             _ -> Nothing
+    ) <|> ( do
+        TP _ p <- tok (TPunctuator PAmpersand)
+        tok (TPunctuator PAmpersand)
+        return (AST.BinaryOpAnd, p)
     ) <?> "a binary operator"
 
 pField :: Parser AST.Field

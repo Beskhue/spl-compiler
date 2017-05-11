@@ -113,6 +113,7 @@ data Type'           = TypeTuple Type Type
                      | TypeBool
                      | TypeChar
                      | TypeIdentifier Identifier
+                     | TypePointer Type
                        deriving (Eq, Show)
 type Type            = (Type', Pos)
 
@@ -123,6 +124,7 @@ instance PrettyPrint Type where
     prettyPrint (TypeBool, _) = "Bool"
     prettyPrint (TypeChar, _) = "Char"
     prettyPrint (TypeIdentifier i, _) = prettyPrint i
+    prettyPrint (TypePointer t, _) = prettyPrint t ++ "*"
 
 instance (ASTEq Type) where
     astEq (TypeTuple t1 t1', _) (TypeTuple t2 t2', _) = astEq t1 t2 && astEq t1' t2'
@@ -268,6 +270,8 @@ instance (ASTEq Constant) where
 data UnaryOperator'  = UnaryOpNeg
                      | UnaryOpSubtr
                      | UnaryOpCast Type
+                     | UnaryOpReference
+                     | UnaryOpDereference
                        deriving (Eq, Show)
 type UnaryOperator   = (UnaryOperator', Pos)
 
@@ -275,6 +279,8 @@ instance PrettyPrint UnaryOperator where
     prettyPrint (UnaryOpNeg, _) = "!"
     prettyPrint (UnaryOpSubtr, _) = "-"
     prettyPrint (UnaryOpCast t, _) = "(" ++ prettyPrint t ++ ")"
+    prettyPrint (UnaryOpReference, _) = "&"
+    prettyPrint (UnaryOpDereference, _) = "*"
 
 instance (ASTEq UnaryOperator) where
     astEq (uOp1, _) (uOp2, _) = uOp1 == uOp2

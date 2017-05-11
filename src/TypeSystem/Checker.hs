@@ -65,12 +65,25 @@ data Type = TVar String
           | TList Type
           | TTuple Type Type
           | TFunction [Type] Type
+          | TPointer Type
           | TVoid
             deriving (Show, Eq, Ord)
 
 -- |A type scheme (polytype): a type with a list of bound type variables (the type variables not bound are still free)
 data Scheme = Scheme [String] Type
               deriving (Show)
+
+------------------------------------------------------------------------------------------------------------------------
+
+data ValueType = PersistentValue
+               | TemporaryValue
+                 deriving (Show, Eq)
+
+valueType :: AST.Expression -> ValueType
+valueType (AST.ExprIdentifier _, _) = PersistentValue
+valueType (AST.ExprIdentifierField _ _, _) = PersistentValue
+valueType (AST.ExprUnaryOp (AST.UnaryOpDereference, _) e, _) = valueType e
+valueType _ = TemporaryValue
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -88,6 +101,7 @@ instance Types Type where
     freeTypeVars (TList l) = freeTypeVars l
     freeTypeVars (TTuple t1 t2) = Set.union (freeTypeVars t1) (freeTypeVars t2)
     freeTypeVars (TFunction args body) = Set.union (freeTypeVars args) (freeTypeVars body)
+    freeTypeVars (TPointer t) = freeTypeVars t
     freeTypeVars TVoid = Set.empty
 
     apply s (TVar v) =
@@ -97,6 +111,7 @@ instance Types Type where
     apply s (TList l) = TList $ apply s l
     apply s (TTuple t1 t2) = TTuple (apply s t1) (apply s t2)
     apply s (TFunction arg body) = TFunction (apply s arg) (apply s body)
+    apply s (TPointer t) = TPointer $ apply s t
     apply s t = t
 
     applyOnlyRename s (TVar v) =
@@ -106,6 +121,7 @@ instance Types Type where
     applyOnlyRename s (TList l) = TList $ applyOnlyRename s l
     applyOnlyRename s (TTuple t1 t2) = TTuple (applyOnlyRename s t1) (applyOnlyRename s t2)
     applyOnlyRename s (TFunction arg body) = TFunction (applyOnlyRename s arg) (applyOnlyRename s body)
+    applyOnlyRename s (TPointer t) = TPointer $ applyOnlyRename s t
     applyOnlyRename s t = t
 
 instance Types Scheme where
@@ -130,7 +146,7 @@ nullSubstitution = Map.empty
 -- |Compose two substitutions: substitute the types in s2 using the s1 substitution, and merge the resulting
 -- substitution back with s1
 composeSubstitution :: Substitution -> Substitution -> Substitution
-composeSubstitution s1 s2 = (Map.map (apply s1) s2) `Map.union` s1
+composeSubstitution s1 s2 = Map.map (apply s1) s2 `Map.union` s1
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -299,12 +315,12 @@ mgu p t1 t2 = do
             return s
     where
     mgu' :: Type -> Type -> TInf Substitution
-    mgu' (TVar u) t           = varBind u t
-    mgu' t (TVar u)           = varBind u t
-    mgu' TBool TBool          = return nullSubstitution
-    mgu' TInt TInt            = return nullSubstitution
-    mgu' TChar TChar          = return nullSubstitution
-    mgu' (TList t) (TList t') = mgu' t t'
+    mgu' (TVar u) t                 = varBind u t
+    mgu' t (TVar u)                 = varBind u t
+    mgu' TBool TBool                = return nullSubstitution
+    mgu' TInt TInt                  = return nullSubstitution
+    mgu' TChar TChar                = return nullSubstitution
+    mgu' (TList t) (TList t')       = mgu' t t'
     mgu' (TTuple t1 t2) (TTuple t1' t2') = do
         s1 <- mgu' t1 t1'
         s2 <- mgu' (apply s1 t2) (apply s1 t2')
@@ -314,8 +330,9 @@ mgu p t1 t2 = do
         s1 <- mgu' arg arg'
         s2 <- mgu' (apply s1 (TFunction args body)) (apply s1 (TFunction args' body'))
         return $ s2 `composeSubstitution` s1
-    mgu' TVoid TVoid          = return nullSubstitution
-    mgu' t1 t2                = throwError $ "types do not unify: " ++ show t1 ++ " and " ++ show t2
+    mgu' (TPointer t) (TPointer t') = mgu' t t'
+    mgu' TVoid TVoid                = return nullSubstitution
+    mgu' t1 t2                      = throwError $ "types do not unify: " ++ show t1 ++ " and " ++ show t2
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -393,8 +410,8 @@ tInfExpr t (AST.ExprTuple e1 e2, p) = do
     void $ mgu (Just p) t (TTuple t1 t2)
 tInfExpr t (AST.ExprUnaryOp op e, p) = do
     tInfUnaryOp t op e
-    t' <- substitute t
-    annotate p t'
+    --t' <- substitute t
+    --annotate p t'
 tInfExpr t (AST.ExprBinaryOp op e1 e2, p) = do
     tInfBinaryOp t op e1 e2
     t' <- substitute t
@@ -441,6 +458,14 @@ tInfUnaryOp t (AST.UnaryOpCast castToType, p) e = do
     t' <- newTypeVar "var"
     tInfExpr t' e
     void $ mgu (Just p) t (rTranslateType castToType)
+tInfUnaryOp t (AST.UnaryOpReference, p) e =
+    case valueType e of
+        PersistentValue -> do
+            t' <- newTypeVar "ref"
+            tInfExpr t' e
+            void $ mgu (Just p) t (TPointer t')
+        _ -> throwError $ "persistent value required for '&' operand"
+tInfUnaryOp t (AST.UnaryOpDereference, p) e = tInfExpr (TPointer t) e
 
 tInfBinaryOp :: Type -> AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf ()
 tInfBinaryOp t (AST.BinaryOpOr, p) e1 e2 = do
@@ -876,6 +901,7 @@ translateType p TInt               = (AST.TypeInt, p)
 translateType p TChar              = (AST.TypeChar, p)
 translateType p (TList t)          = (AST.TypeList $ translateType p t, p)
 translateType p (TTuple t1 t2)     = (AST.TypeTuple (translateType p t1) (translateType p t2), p)
+translateType p (TPointer t)       = (AST.TypePointer $ translateType p t, p)
 
 translateFunType :: Pos.Pos -> Type -> AST.FunType
 translateFunType p (TFunction args TVoid) = (AST.FunTypeVoid (map (translateType p) args), p)
@@ -888,6 +914,7 @@ rTranslateType (AST.TypeInt, _)           = TInt
 rTranslateType (AST.TypeChar, _)          = TChar
 rTranslateType (AST.TypeList t, _)        = TList $ rTranslateType t
 rTranslateType (AST.TypeTuple t1 t2, _)   = TTuple (rTranslateType t1) (rTranslateType t2)
+rTranslateType (AST.TypePointer t, _)     = TPointer $ rTranslateType t
 
 rTranslateFunType :: AST.FunType -> Type
 rTranslateFunType (AST.FunTypeVoid args, _)  = TFunction (map rTranslateType args) TVoid
