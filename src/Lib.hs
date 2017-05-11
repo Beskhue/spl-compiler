@@ -14,7 +14,7 @@ import qualified Data.Map as Map
 getFilePath :: IO String
 getFilePath = do
     args <- getArgs
-    if length args > 0
+    if not $ null args
         then return $ head args
         else do
             putStr "Please provide a .spl program: "
@@ -26,14 +26,14 @@ compile = do
     rawSPL <- readUTF8File filePath
     putStrLn $ "Read '" ++ filePath ++ "'."
     case Lexer.lex filePath rawSPL of
-        Left e    -> putStrLn $ show e
+        Left e    -> print e
         Right ts -> case SPLParser.parse ts of
-            Left e -> putStrLn $ show e
+            Left e -> print e
             Right ast -> case Checker.check False ast of
-                Left e -> putStrLn $ show e
+                Left e -> print e
                 --Right (b, annotation) -> putStrLn $ AST.prettyPrint b ++ "\n\n" ++ show b ++ "\n\n" ++ show (Map.assocs annotation)
                 Right (b, annotation) -> case SSM.gen annotation b of
-                    Left e -> putStrLn $ show e
+                    Left e -> print e
                     Right ssm -> putStrLn $ SSM.display ssm
 
 prettyPrint :: IO()
@@ -42,15 +42,15 @@ prettyPrint = do
     rawSPL <- readUTF8File filePath
     putStrLn $ "Read '" ++ filePath ++ "'."
     case Lexer.lex filePath rawSPL of
-        Left e    -> putStrLn $ show e
+        Left e    -> print e
         Right ts -> case SPLParser.parse ts of
-            Left e -> putStrLn $ show e
+            Left e -> print e
             Right ast -> putStrLn $ AST.prettyPrint ast
 
 parseTest  :: Show a => Parsec [TokenP] () a -> String -> IO ()
 parseTest p s =
     case Lexer.lex "test" s of
-        Left e    -> putStrLn $ show e
+        Left e    -> print e
         Right ts -> SPLParser.parseTest p ts
 
 -- |Read a file in UTF8 encoding
