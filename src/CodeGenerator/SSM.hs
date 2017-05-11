@@ -541,7 +541,6 @@ genExpression (AST.ExprFunCall i args, p) = do
         genPrint Checker.TChar = push $ SSMLine Nothing (Just $ IIO IOPrintChar) Nothing
         genPrint (Checker.TTuple t1 t2) = do
             genPrintChar '('
-            -- Copy heap address
             push $ SSMLine Nothing (Just $ ILoad $ LHeapMultiple (ANumber 0) (ANumber 2)) Nothing
             genPrint t1
             genPrintChar ','
