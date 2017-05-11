@@ -299,10 +299,11 @@ pExpression = pExpression' 1
 -}
 
 pExprBase :: Parser AST.Expression
-pExprBase = pExprGroupOrTuple
+pExprBase =
+         try pExpressionUnaryOperator
+         <|> pExprGroupOrTuple
          <|> pExpressionConst
-         <|> pExpressionIdentifier
-         <|> pExpressionUnaryOperator
+         <|> pExpressionIdentifier <?> "a base expression"
 
 pExpressionIdentifier :: Parser AST.Expression
 pExpressionIdentifier = do
@@ -373,13 +374,19 @@ pConstant = tokenPrim show advance
     ) <?> "a constant"
 
 pUnaryOperator :: Parser AST.UnaryOperator
-pUnaryOperator = tokenPrim show advance
-    (
-        \tp -> case tp of
-            TP (TOperator ONeg) p -> Just $ (AST.UnaryOpNeg, p)
-            TP (TPunctuator PMinus) p -> Just $ (AST.UnaryOpSubtr, p)
-            _ -> Nothing
-    ) <?> "a unary operator"
+pUnaryOperator =
+        tokenPrim show advance
+        (
+            \tp -> case tp of
+                TP (TOperator ONeg) p -> Just $ (AST.UnaryOpNeg, p)
+                TP (TPunctuator PMinus) p -> Just $ (AST.UnaryOpSubtr, p)
+                _ -> Nothing
+        ) <|> ( do
+            TP _ p <- tok (TPunctuator PParenOpen)
+            t <- pType
+            tok (TPunctuator PParenClose)
+            return (AST.UnaryOpCast t, p)
+        ) <?> "a unary operator"
 
 pBinaryOperator :: Parser AST.BinaryOperator
 pBinaryOperator = tokenPrim show advance

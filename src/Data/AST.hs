@@ -267,6 +267,7 @@ instance (ASTEq Constant) where
 
 data UnaryOperator'  = UnaryOpNeg
                      | UnaryOpSubtr
+                     | UnaryOpCast Type
                        deriving (Eq, Show)
 type UnaryOperator   = (UnaryOperator', Pos)
 

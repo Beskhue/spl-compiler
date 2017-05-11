@@ -620,6 +620,7 @@ genConstant (AST.ConstEmptyList, _) = do
 genUnaryOp :: AST.UnaryOperator -> Gen ()
 genUnaryOp (AST.UnaryOpNeg, _) = push $ SSMLine Nothing (Just $ ICompute ONot) Nothing
 genUnaryOp (AST.UnaryOpSubtr, _) = push $ SSMLine Nothing (Just $ ICompute ONeg) Nothing
+genUnaryOp (AST.UnaryOpCast _, _) = return ()
 
 genBinaryOp :: AST.BinaryOperator -> Checker.Type -> Checker.Type -> Gen ()
 genBinaryOp (AST.BinaryOpOr, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OOr) Nothing

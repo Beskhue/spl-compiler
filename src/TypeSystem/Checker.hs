@@ -437,6 +437,10 @@ tInfUnaryOp t (AST.UnaryOpNeg, p) e = do
 tInfUnaryOp t (AST.UnaryOpSubtr, p) e = do
     tInfExpr TInt e
     void $ mgu (Just p) t TInt
+tInfUnaryOp t (AST.UnaryOpCast castToType, p) e = do
+    t' <- newTypeVar "var"
+    tInfExpr t' e
+    void $ mgu (Just p) t (rTranslateType castToType)
 
 tInfBinaryOp :: Type -> AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf ()
 tInfBinaryOp t (AST.BinaryOpOr, p) e1 e2 = do
