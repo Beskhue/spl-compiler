@@ -26,7 +26,7 @@ prettyPrint :: IO ()
 prettyPrint = do
     ast <- askAndParse
     (ast', _) <- eitherToRight $ Checker.check False ast
-    putStrLn $ AST.prettyPrint ast
+    putStrLn $ AST.prettyPrint ast'
 
 parse :: (RawSPL, Lib.FilePath) -> IO AST.SPL
 parse (rawSPL, filePath) = do
