@@ -274,6 +274,7 @@ type UnaryOperator   = (UnaryOperator', Pos)
 instance PrettyPrint UnaryOperator where
     prettyPrint (UnaryOpNeg, _) = "!"
     prettyPrint (UnaryOpSubtr, _) = "-"
+    prettyPrint (UnaryOpCast t, _) = "(" ++ prettyPrint t ++ ")"
 
 instance (ASTEq UnaryOperator) where
     astEq (uOp1, _) (uOp2, _) = uOp1 == uOp2
