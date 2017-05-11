@@ -2,6 +2,7 @@ module Lib where
 
 import System.Environment
 import System.IO
+import System.IO.Error
 import Text.Parsec.Prim
 import Data.Token
 import Data.AST as AST
@@ -11,6 +12,42 @@ import qualified TypeSystem.Checker as Checker
 import qualified CodeGenerator.SSM as SSM
 import qualified Data.Map as Map
 
+type FilePath = String
+type RawSPL = String
+
+compile :: IO ()
+compile = do
+    ast <- askAndParse
+    (ast', annotation) <- eitherToRight $ Checker.check False ast
+    ssm <- eitherToRight $ SSM.gen annotation ast'
+    putStrLn $ SSM.display ssm
+
+prettyPrint :: IO ()
+prettyPrint = do
+    ast <- askAndParse
+    (ast', _) <- eitherToRight $ Checker.check False ast
+    putStrLn $ AST.prettyPrint ast
+
+parse :: (RawSPL, Lib.FilePath) -> IO AST.SPL
+parse (rawSPL, filePath) = do
+    ts <- eitherToRight $ Lexer.lex filePath rawSPL
+    eitherToRight $ SPLParser.parse ts
+
+-- |Ask the user for a file, read it, and parse it
+askAndParse :: IO AST.SPL
+askAndParse = do
+    f <- askForFile
+    Lib.parse f
+
+-- |Ask the user for a file and read it
+askForFile :: IO (RawSPL, Lib.FilePath)
+askForFile = do
+    filePath <- getFilePath
+    rawSPL <- readUTF8File filePath
+    putStrLn $ "Read '" ++ filePath ++ "'."
+    return (rawSPL, filePath)
+
+-- |Ask the user for a file path
 getFilePath :: IO String
 getFilePath = do
     args <- getArgs
@@ -20,42 +57,14 @@ getFilePath = do
             putStr "Please provide a .spl program: "
             getLine
 
-compile :: IO ()
-compile = do
-    filePath <- getFilePath
-    rawSPL <- readUTF8File filePath
-    putStrLn $ "Read '" ++ filePath ++ "'."
-    case Lexer.lex filePath rawSPL of
-        Left e    -> print e
-        Right ts -> case SPLParser.parse ts of
-            Left e -> print e
-            Right ast -> case Checker.check False ast of
-                Left e -> print e
-                --Right (b, annotation) -> putStrLn $ AST.prettyPrint b ++ "\n\n" ++ show b ++ "\n\n" ++ show (Map.assocs annotation)
-                Right (b, annotation) -> case SSM.gen annotation b of
-                    Left e -> print e
-                    Right ssm -> putStrLn $ SSM.display ssm
-
-prettyPrint :: IO()
-prettyPrint = do
-    filePath <- getFilePath
-    rawSPL <- readUTF8File filePath
-    putStrLn $ "Read '" ++ filePath ++ "'."
-    case Lexer.lex filePath rawSPL of
-        Left e    -> print e
-        Right ts -> case SPLParser.parse ts of
-            Left e -> print e
-            Right ast -> putStrLn $ AST.prettyPrint ast
-
-parseTest  :: Show a => Parsec [TokenP] () a -> String -> IO ()
-parseTest p s =
-    case Lexer.lex "test" s of
-        Left e    -> print e
-        Right ts -> SPLParser.parseTest p ts
-
 -- |Read a file in UTF8 encoding
 readUTF8File :: String -> IO String
 readUTF8File filePath = do
     inputHandle <- openFile filePath ReadMode
     hSetEncoding inputHandle utf8
     hGetContents inputHandle
+
+-- |Return the right part of an either, or display the left part as an error
+eitherToRight :: Show a => Either a b -> IO b
+eitherToRight (Left a) = ioError $ userError $ show a
+eitherToRight (Right b) = return b
