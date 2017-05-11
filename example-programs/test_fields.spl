@@ -5,4 +5,9 @@ main () {
     print(a.tl.hd);
     print(a.tl.tl);
     
+    var b = (a, True);
+    
+    print(b.fst);
+    print(b.fst.hd);
+    print(b.snd);    
 }

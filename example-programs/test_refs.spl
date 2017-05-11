@@ -1,0 +1,16 @@
+var g1 = 0xBAAAAAAD;
+var g2 = True;
+
+f (a, b, c) {
+    var d = 0xCAFED00D;
+    {
+        var g2 = 0x99887766;
+        var a = 0x11223344;
+        print(g2); // []
+    }
+    print(g2); // 0
+}
+
+main () {
+    f(0xDEADBEEF, [], 0xCAFEBABE);
+}
