@@ -410,8 +410,8 @@ tInfExpr t (AST.ExprTuple e1 e2, p) = do
     void $ mgu (Just p) t (TTuple t1 t2)
 tInfExpr t (AST.ExprUnaryOp op e, p) = do
     tInfUnaryOp t op e
-    --t' <- substitute t
-    --annotate p t'
+    t' <- substitute t
+    annotate p t'
 tInfExpr t (AST.ExprBinaryOp op e1 e2, p) = do
     tInfBinaryOp t op e1 e2
     t' <- substitute t
