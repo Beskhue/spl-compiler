@@ -34,7 +34,7 @@ posToSourcePos :: Pos -> SourcePos.SourcePos
 posToSourcePos (Pos name line column) = SourcePos.newPos name line column
 
 advance :: SourcePos.SourcePos -> t -> [TokenP] -> SourcePos.SourcePos
-advance _ _ ((TP t pos) : _) = posToSourcePos pos
+advance _ _ (TP t pos : _) = posToSourcePos pos
 advance pos _ [] = pos
 
 satisfy :: (TokenP -> Bool) -> Parser TokenP
@@ -42,7 +42,7 @@ satisfy f = tokenPrim show advance
     (\tp -> if f tp then Just tp else Nothing)
 
 tok :: Token -> Parser TokenP
-tok t = (satisfy $ (== t) . Data.Token.token) <?> show t
+tok t = satisfy ((== t) . Data.Token.token) <?> show t
 
 pPeek :: Parser Token
 pPeek = lookAhead $ tokenPrim show advance (\(TP t p) -> Just t)
@@ -176,7 +176,7 @@ pTypeIdentifier = (do
 pStatement :: Parser AST.Statement
 pStatement = (do
         (varDecl, p) <- try pVarDecl
-        return $ (AST.StmtVarDecl (varDecl, p), p)
+        return (AST.StmtVarDecl (varDecl, p), p)
     ) <|> pStatementConditional <|> pStatementWhile <|> pStatementFunCallAssignment <|> pStatementReturn <|> pStatementBlock
 
 pStatementConditional :: Parser AST.Statement
@@ -348,10 +348,10 @@ pConstant :: Parser AST.Constant
 pConstant = tokenPrim show advance
     (
         \tp -> case tp of
-            TP (TConstant (CBool b)) p -> Just $ (AST.ConstBool b, p)
-            TP (TConstant (CInt i)) p -> Just $ (AST.ConstInt i, p)
-            TP (TConstant (CChar c)) p -> Just $ (AST.ConstChar c, p)
-            TP (TConstant CEmptyList) p -> Just $ (AST.ConstEmptyList, p)
+            TP (TConstant (CBool b)) p -> Just (AST.ConstBool b, p)
+            TP (TConstant (CInt i)) p -> Just (AST.ConstInt i, p)
+            TP (TConstant (CChar c)) p -> Just (AST.ConstChar c, p)
+            TP (TConstant CEmptyList) p -> Just (AST.ConstEmptyList, p)
             _ -> Nothing
     ) <?> "a constant"
 
@@ -360,8 +360,8 @@ pUnaryOperator =
         tokenPrim show advance
         (
             \tp -> case tp of
-                TP (TOperator ONeg) p -> Just $ (AST.UnaryOpNeg, p)
-                TP (TPunctuator PMinus) p -> Just $ (AST.UnaryOpSubtr, p)
+                TP (TOperator ONeg) p -> Just (AST.UnaryOpNeg, p)
+                TP (TPunctuator PMinus) p -> Just (AST.UnaryOpSubtr, p)
                 _ -> Nothing
         ) <|> ( do
             TP _ p <- tok (TPunctuator PParenOpen)
@@ -374,20 +374,20 @@ pBinaryOperator :: Parser AST.BinaryOperator
 pBinaryOperator = tokenPrim show advance
     (
         \tp -> case tp of
-            TP (TOperator OOr) p -> Just $ (AST.BinaryOpOr, p)
-            TP (TOperator OAnd) p -> Just $ (AST.BinaryOpAnd, p)
-            TP (TOperator OEq) p -> Just $ (AST.BinaryOpEq, p)
-            TP (TOperator ONEq) p -> Just $ (AST.BinaryOpNEq, p)
-            TP (TOperator OLT) p -> Just $ (AST.BinaryOpLT, p)
-            TP (TOperator OGT) p -> Just $ (AST.BinaryOpGT, p)
-            TP (TOperator OLTE) p -> Just $ (AST.BinaryOpLTE, p)
-            TP (TOperator OGTE) p -> Just $ (AST.BinaryOpGTE, p)
-            TP (TOperator OConcat) p -> Just $ (AST.BinaryOpConcat, p)
-            TP (TOperator OPlus) p -> Just $ (AST.BinaryOpPlus, p)
-            TP (TPunctuator PMinus) p -> Just $ (AST.BinaryOpSubtr, p)
-            TP (TOperator OMultiply) p -> Just $ (AST.BinaryOpMult, p)
-            TP (TOperator ODivide) p -> Just $ (AST.BinaryOpDiv, p)
-            TP (TOperator OMod) p -> Just $ (AST.BinaryOpMod, p)
+            TP (TOperator OOr) p -> Just (AST.BinaryOpOr, p)
+            TP (TOperator OAnd) p -> Just (AST.BinaryOpAnd, p)
+            TP (TOperator OEq) p -> Just (AST.BinaryOpEq, p)
+            TP (TOperator ONEq) p -> Just (AST.BinaryOpNEq, p)
+            TP (TOperator OLT) p -> Just (AST.BinaryOpLT, p)
+            TP (TOperator OGT) p -> Just (AST.BinaryOpGT, p)
+            TP (TOperator OLTE) p -> Just (AST.BinaryOpLTE, p)
+            TP (TOperator OGTE) p -> Just (AST.BinaryOpGTE, p)
+            TP (TOperator OConcat) p -> Just (AST.BinaryOpConcat, p)
+            TP (TOperator OPlus) p -> Just (AST.BinaryOpPlus, p)
+            TP (TPunctuator PMinus) p -> Just (AST.BinaryOpSubtr, p)
+            TP (TOperator OMultiply) p -> Just (AST.BinaryOpMult, p)
+            TP (TOperator ODivide) p -> Just (AST.BinaryOpDiv, p)
+            TP (TOperator OMod) p -> Just (AST.BinaryOpMod, p)
             _ -> Nothing
     ) <?> "a binary operator"
 
@@ -395,10 +395,10 @@ pField :: Parser AST.Field
 pField = tokenPrim show advance
     (
         \tp -> case tp of
-            TP (TField FHd) p -> Just $ (AST.FieldHd, p)
-            TP (TField FTl) p -> Just $ (AST.FieldTl, p)
-            TP (TField FFst) p -> Just $ (AST.FieldFst, p)
-            TP (TField FSnd) p -> Just $ (AST.FieldSnd, p)
+            TP (TField FHd) p -> Just (AST.FieldHd, p)
+            TP (TField FTl) p -> Just (AST.FieldTl, p)
+            TP (TField FFst) p -> Just (AST.FieldFst, p)
+            TP (TField FSnd) p -> Just (AST.FieldSnd, p)
             _ -> Nothing
     ) <?> "a field identifier"
 
@@ -406,7 +406,7 @@ pIdentifier :: Parser AST.Identifier
 pIdentifier = tokenPrim show advance
     (
         \tp -> case tp of
-            TP (TIdentifier identifier) p -> Just $ (AST.Identifier identifier, p)
+            TP (TIdentifier identifier) p -> Just (AST.Identifier identifier, p)
             _ -> Nothing
     ) <?> "an identifier"
 
