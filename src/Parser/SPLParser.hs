@@ -250,7 +250,6 @@ pStatementReturn = (do
         Just expr -> return (AST.StmtReturn expr, p)
         Nothing -> return (AST.StmtReturnVoid, p)) <?> "a return statement"
 
--- TODO: associativity
 pExpression :: Parser AST.Expression
 pExpression = pExpression' 1
     where
@@ -280,23 +279,6 @@ pExpression = pExpression' 1
                         pLeftAssocExpression (AST.ExprBinaryOp bOp (e1, p) e2, p) precedence
                     else return (e1, p)
             } <|> return (e1, p)
-{-
-pExpression :: Parser AST.Expression
-pExpression = pExpression' 1
-    where
-        pExpression' :: Int -> Parser AST.Expression
-        pExpression' 8          = pExprBase
-        pExpression' precedence = do {
-            (expr, p) <- pExpression' (precedence + 1); (do
-                binaryOperator <- try (lookAhead pBinaryOperator)
-                if AST.binaryOperatorPrecedence binaryOperator == precedence
-                    then do
-                        pBinaryOperator -- consume binary operator
-                        expr' <- pExpression
-                        return (AST.ExprBinaryOp binaryOperator (expr, p) expr', p)
-                    else return (expr, p)
-            ) <|> return (expr, p)}
--}
 
 pExprBase :: Parser AST.Expression
 pExprBase =
