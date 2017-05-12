@@ -188,7 +188,7 @@ pStatement :: Parser AST.Statement
 pStatement = (do
         (varDecl, p) <- try pVarDecl
         return (AST.StmtVarDecl (varDecl, p), p)
-    ) <|> pStatementConditional <|> pStatementWhile <|> pStatementFunCallAssignment <|> pStatementReturn <|> pStatementBlock
+    ) <|> pStatementConditional <|> pStatementWhile <|> pStatementReturn <|> pStatementBlock <|> try pStatementFunCall <|> pStatementAssignment
 
 pStatementConditional :: Parser AST.Statement
 pStatementConditional =
@@ -232,25 +232,23 @@ pStatementBlock =
         return (AST.StmtBlock statements, p)
     ) <?> "a statement block"
 
-pStatementFunCallAssignment :: Parser AST.Statement
-pStatementFunCallAssignment =
+pStatementFunCall :: Parser AST.Statement
+pStatementFunCall = do
+    (expr, p) <- pExpressionIdentifier
+    let AST.ExprFunCall identifier args = expr
+    tok (TPunctuator PSeparator)
+    return (AST.StmtFunCall identifier args, p)
+    <?> "a function call"
+
+pStatementAssignment :: Parser AST.Statement
+pStatementAssignment =
     (do
-        (expr, p) <- pExpressionIdentifier
-        case expr of
-            AST.ExprIdentifier identifier -> (do
-                tok (TOperator OAssignment)
-                expr <- pExpression
-                tok (TPunctuator PSeparator)
-                return (AST.StmtAssignment identifier expr, p)) <?> "a variable assignment"
-            AST.ExprIdentifierField identifier field -> (do
-                tok (TOperator OAssignment)
-                expr <- pExpression
-                tok (TPunctuator PSeparator)
-                return (AST.StmtAssignmentField identifier field expr, p)) <?> "a field variable assignment"
-            AST.ExprFunCall identifier args -> (do
-                tok (TPunctuator PSeparator)
-                return (AST.StmtFunCall identifier args, p)) <?> "a function call"
-    ) <?> "an assignment or function call"
+        expr1@(_, p) <- pExpression
+        tok (TOperator OAssignment)
+        expr2 <- pExpression
+        tok (TPunctuator PSeparator)
+        return (AST.StmtAssignment expr1 expr2, p)
+    ) <?> "an assignment"
 
 pStatementReturn :: Parser AST.Statement
 pStatementReturn = (do
@@ -292,20 +290,26 @@ pExpression = pExpression' 1
             } <|> return (e1, p)
 
 pExprBase :: Parser AST.Expression
-pExprBase =
-         try pExpressionUnaryOperator
+pExprBase = do
+     expr <- (
+        try pExpressionUnaryOperator
          <|> pExprGroupOrTuple
          <|> pExpressionConst
-         <|> pExpressionIdentifier <?> "a base expression"
+         <|> pExpressionIdentifier <?> "a base expression")
+     pExprBase' expr
+     where
+         pExprBase' :: AST.Expression -> Parser AST.Expression
+         pExprBase' expr@(_, p) = do
+             field <- many pField
+             case field of
+                 [] -> return expr
+                 _ -> return (AST.ExprField expr field, p)
 
 pExpressionIdentifier :: Parser AST.Expression
 pExpressionIdentifier = do
     (identifier, p) <- pIdentifier
     t <- pPeek
     case t of
-        (TField _) -> do
-            field <- many1 pField
-            return (AST.ExprIdentifierField (identifier, p) field, p)
         (TPunctuator PParenOpen) -> do
             tok (TPunctuator PParenOpen)
             args <- pFunArgs

@@ -417,36 +417,10 @@ genStatement (AST.StmtBlock stmts', _) stmts = do
     scopes <- ask
     local (const $ Stack.stackPush scopes emptyVariableScope) (genStatements stmts')
     genStatements stmts
-genStatement (AST.StmtAssignment i e, _) stmts = do
-    genExpression e
-    location <- getVariable $ Checker.idName i
-    case location of
-        Just (SGlobal, offset) -> do -- Assign to a global
-            -- Load the address of the end of the program code
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "assign global " ++ Checker.idName i)
-            -- Store the value at the address of (the end of the program code + offset)
-            push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber (endPCToStartStackOffset + offset)) Nothing
-        Just (SLocal, offset) ->
-            push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber offset) (Just $ "assign local " ++ Checker.idName i)
-        Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
-    genStatements stmts
-genStatement (AST.StmtAssignmentField i f e, _) stmts = do
-    genExpression e
-    location <- getVariable $ Checker.idName i
-    case location of
-        Just (SGlobal, offset) -> do -- Load a global
-            -- Load the address of the end of the program code
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "load address of global " ++ Checker.idName i)
-            -- Load the value at the address of (the end of the program code + offset)
-            push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) Nothing
-        Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber offset) (Just $ "load local " ++ Checker.idName i)
-        Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
-    genFields $ init f
-    case last f of
-        (AST.FieldHd, _) -> push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber $ -1) Nothing
-        (AST.FieldTl, _) -> push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
-        (AST.FieldFst, _) -> push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
-        (AST.FieldSnd, _) -> push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber $ -1) Nothing
+genStatement (AST.StmtAssignment e1 e2, _) stmts = do
+    genExpression e2
+    genAddressOfExpression e1
+    push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
     genStatements stmts
 genStatement (AST.StmtFunCall i args, p) stmts = do
     genExpression (AST.ExprFunCall i args, p)
@@ -473,17 +447,8 @@ genExpression (AST.ExprIdentifier i, p) = do
             push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) Nothing
         Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber offset) (Just $ "load local " ++ Checker.idName i)
         Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
-genExpression (AST.ExprIdentifierField i f, _) = do
-    location <- getVariable $ Checker.idName i
-    case location of
-        Just (SGlobal, offset) -> do -- Load a global
-            -- Load the address of the end of the program code
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "load global " ++ Checker.idName i)
-            -- Load the value at the address of (the end of the program code + offset)
-            push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) Nothing
-            push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
-        Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber offset) (Just $ "load local " ++ Checker.idName i)
-        Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
+genExpression (AST.ExprField e f, _) = do
+    genExpression e
     genFields f
 genExpression (AST.ExprFunCall i args, p) = do
     a <- getASTAnnotation
@@ -620,20 +585,11 @@ genAddressOfExpression (AST.ExprIdentifier i, p) = do
             push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
         Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LLocalAddress $ ANumber offset) (Just $ "load address of local " ++ Checker.idName i)
         Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
-genAddressOfExpression (AST.ExprIdentifierField i f, _) = do -- TODO: check whether this implementation is correct
-    location <- getVariable $ Checker.idName i
-    case location of
-        Just (SGlobal, offset) -> do -- Load a global
-            -- Load the address of the end of the program code
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "load global " ++ Checker.idName i)
-            -- Load the value at the address of (the end of the program code + offset)
-            push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) Nothing
-            push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
-        Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber offset) (Just $ "load local " ++ Checker.idName i)
-        Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
+genAddressOfExpression (AST.ExprField e f, _) = do
+    genExpression e
     genAddressOfFields f
-genAddressOfExpression (AST.ExprUnaryOp (AST.UnaryOpDereference, _) e, _) = genAddressOfExpression e
-genAddressOfExpression _ = throwError "cannot take address a temporary value expression"
+genAddressOfExpression (AST.ExprUnaryOp (AST.UnaryOpDereference, _) e, _) = genExpression e
+genAddressOfExpression _ = throwError "cannot take address of a temporary value expression"
 
 genAddressOfFields :: [AST.Field] -> Gen ()
 genAddressOfFields fields = do

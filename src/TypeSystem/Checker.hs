@@ -81,7 +81,7 @@ data ValueType = PersistentValue
 
 valueType :: AST.Expression -> ValueType
 valueType (AST.ExprIdentifier _, _) = PersistentValue
-valueType (AST.ExprIdentifierField _ _, _) = PersistentValue
+valueType (AST.ExprField e _, _) = valueType e
 valueType (AST.ExprUnaryOp (AST.UnaryOpDereference, _) e, _) = valueType e
 valueType _ = TemporaryValue
 
@@ -393,8 +393,9 @@ tInfExpr :: Type -> AST.Expression -> TInf ()
 tInfExpr t (AST.ExprIdentifier id, p) = do
     t' <- tInfId id
     void $ mgu (Just p) t t'
-tInfExpr t (AST.ExprIdentifierField id fields, _) = do
-    t' <- tInfId id
+tInfExpr t (AST.ExprField e fields, _) = do
+    t' <- newTypeVar "fld"
+    tInfExpr t' e
     tTraverseFields t t' fields
 tInfExpr t (AST.ExprFunCall id args, p) = do
     t1 <- tInfId id
@@ -778,16 +779,10 @@ tInfStatement t (AST.StmtBlock stmts, p) = do
     local (const newCtx) (do
         (stmts', returnsValue) <- tInfStatements t stmts
         return ((AST.StmtBlock stmts', p), "", returnsValue))
-tInfStatement t (AST.StmtAssignment identifier expr, p) = do
-    (Scheme _ t) <- getScheme (idName identifier)
-    tInfExpr t expr
-    return ((AST.StmtAssignment identifier expr, p), "", False)
-tInfStatement t (AST.StmtAssignmentField identifier fields expr, p) = do
-    (Scheme _ t) <- getScheme (idName identifier)
-    t' <- newTypeVar "var"
-    tInfExpr t' expr
-    tTraverseFields t' t fields
-    return ((AST.StmtAssignmentField identifier fields expr, p), "", False)
+tInfStatement t (AST.StmtAssignment expr1 expr2, p) = do
+    tInfExpr t expr1
+    tInfExpr t expr2
+    return ((AST.StmtAssignment expr1 expr2, p), "", False)
 tInfStatement t (AST.StmtFunCall identifier expressions, p) = do
     tInfExpr t (AST.ExprFunCall identifier expressions, p)
     return ((AST.StmtFunCall identifier expressions, p), "", False)
@@ -861,13 +856,9 @@ instance Dependencies AST.Statement where
     dependencies globalDefs (AST.StmtBlock ss, _) =
         let (_, deps) = dependencies globalDefs ss in
             (globalDefs, deps)
-    dependencies globalDefs (AST.StmtAssignment i e, _) =
-        let (_, deps) = dependencies globalDefs i in
-            let (_, deps') = dependencies globalDefs e in
-                (globalDefs, deps ++ deps')
-    dependencies globalDefs (AST.StmtAssignmentField i _ e, _) =
-        let (_, deps) = dependencies globalDefs i in
-            let (_, deps') = dependencies globalDefs e in
+    dependencies globalDefs (AST.StmtAssignment e1 e2, _) =
+        let (_, deps) = dependencies globalDefs e1 in
+            let (_, deps') = dependencies globalDefs e2 in
                 (globalDefs, deps ++ deps')
     dependencies globalDefs (AST.StmtFunCall i es, _) =
         let (_, deps) = dependencies globalDefs i in
@@ -878,7 +869,7 @@ instance Dependencies AST.Statement where
 
 instance Dependencies AST.Expression where
     dependencies globalDefs (AST.ExprIdentifier i, _) = dependencies globalDefs i
-    dependencies globalDefs (AST.ExprIdentifierField i _, _) = dependencies globalDefs i
+    dependencies globalDefs (AST.ExprField e _, _) = dependencies globalDefs e
     dependencies globalDefs (AST.ExprFunCall i es, _) =
         let (_, deps) = dependencies globalDefs i in
             let (_, deps') = dependencies globalDefs es in
@@ -960,8 +951,7 @@ instance RewriteAST AST.Statement where
     rewrite s (AST.StmtIfElse e st1 st2, p) = (AST.StmtIfElse (rewrite s e) (rewrite s st1) (rewrite s st2), p)
     rewrite s (AST.StmtWhile e st, p) = (AST.StmtWhile (rewrite s e) (rewrite s st), p)
     rewrite s (AST.StmtBlock sts, p) = (AST.StmtBlock (rewrite s sts), p)
-    rewrite s (AST.StmtAssignment i e, p) = (AST.StmtAssignment (rewrite s i) (rewrite s e), p)
-    rewrite s (AST.StmtAssignmentField i f e, p) = (AST.StmtAssignmentField (rewrite s i) (rewrite s f) (rewrite s e), p)
+    rewrite s (AST.StmtAssignment e1 e2, p) = (AST.StmtAssignment (rewrite s e1) (rewrite s e2), p)
     rewrite s (AST.StmtFunCall i es, p) = (AST.StmtFunCall (rewrite s i) (rewrite s es), p)
     rewrite s (AST.StmtReturn e, p) = (AST.StmtReturn (rewrite s e), p)
     rewrite _ st = st

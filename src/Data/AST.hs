@@ -140,8 +140,7 @@ data Statement'      = StmtVarDecl VarDecl
                      | StmtIfElse Expression Statement Statement
                      | StmtWhile Expression Statement
                      | StmtBlock [Statement]
-                     | StmtAssignment Identifier Expression
-                     | StmtAssignmentField Identifier [Field] Expression
+                     | StmtAssignment Expression Expression -- lhs must have value type PermanentValue
                      | StmtFunCall Identifier [Expression]
                      | StmtReturn Expression
                      | StmtReturnVoid
@@ -171,8 +170,7 @@ instance PrettyPrint Statement where
     prettyPrint (StmtBlock ss, _) = "{\n"
         ++ indent (prettyPrint ss)
         ++ "\n}"
-    prettyPrint (StmtAssignment i e, _) = prettyPrint i ++ " = " ++ prettyPrint e ++ ";"
-    prettyPrint (StmtAssignmentField i f e, _) = prettyPrint i ++ prettyPrint f ++ " = " ++ prettyPrint e ++ ";"
+    prettyPrint (StmtAssignment e1 e2, _) = prettyPrint e1 ++ " = " ++ prettyPrint e2 ++ ";"
     prettyPrint (StmtFunCall i es, _) = prettyPrint i ++ "(" ++ printArgs 0 es ++ ");"
         where
             printArgs :: Int -> [Expression] -> String
@@ -188,15 +186,14 @@ instance (ASTEq Statement) where
     astEq (StmtIfElse e1 s1 s1', _) (StmtIfElse e2 s2 s2', _) = astEq e1 e2 && astEq s1 s2 && astEq s1' s2'
     astEq (StmtWhile e1 s1, _) (StmtWhile e2 s2, _) = astEq e1 e2 && astEq s1 s2
     astEq (StmtBlock ss1, _) (StmtBlock ss2, _) = astEq ss1 ss2
-    astEq (StmtAssignment i1 e1, _) (StmtAssignment i2 e2, _) = astEq i1 i2 && astEq e1 e2
-    astEq (StmtAssignmentField i1 f1 e1, _) (StmtAssignmentField i2 f2 e2, _) = astEq i1 i2 && astEq f1 f2 && astEq e1 e2
+    astEq (StmtAssignment e1 e1', _) (StmtAssignment e2 e2', _) = astEq e1 e2 && astEq e1' e2'
     astEq (StmtFunCall i1 es1, _) (StmtFunCall i2 es2, _) = astEq i1 i2 && astEq es1 es2
     astEq (StmtReturn e1, _) (StmtReturn e2, _) = astEq e1 e2
     astEq (StmtReturnVoid, _) (StmtReturnVoid, _) = True
     astEq _ _ = False
 
 data Expression'     = ExprIdentifier Identifier
-                     | ExprIdentifierField Identifier [Field]
+                     | ExprField Expression [Field]
                      | ExprFunCall Identifier [Expression]
                      | ExprConstant Constant
                      | ExprTuple Expression Expression
@@ -207,7 +204,7 @@ type Expression      = (Expression', Pos)
 
 instance PrettyPrint Expression where
     prettyPrint (ExprIdentifier i, _) = prettyPrint i
-    prettyPrint (ExprIdentifierField i field, _) = prettyPrint i ++ printField field
+    prettyPrint (ExprField e field, _) = prettyPrint e ++ printField field
         where
             printField :: [Field] -> String
             printField = foldr ((++) . prettyPrint) ""
@@ -239,7 +236,7 @@ instance PrettyPrint Expression where
 
 instance (ASTEq Expression) where
     astEq (ExprIdentifier i1, _) (ExprIdentifier i2, _) = astEq i1 i2
-    astEq (ExprIdentifierField i1 f1, _) (ExprIdentifierField i2 f2, _) = astEq i1 i2 && astEq f1 f2
+    astEq (ExprField e1 f1, _) (ExprField e2 f2, _) = astEq e1 e2 && astEq f1 f2
     astEq (ExprFunCall i1 es1, _) (ExprFunCall i2 es2, _) = astEq i1 i2 && astEq es1 es2
     astEq (ExprConstant c1, _) (ExprConstant c2, _) = astEq c1 c2
     astEq (ExprTuple t1 t1', _) (ExprTuple t2 t2', _) = astEq t1 t2 && astEq t2 t2'
