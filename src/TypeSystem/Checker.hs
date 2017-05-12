@@ -505,6 +505,17 @@ tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2 = do
     tInfExpr TInt e2
     void $ mgu (Just p) t TInt
 tInfBinaryOp t (AST.BinaryOpSubtr, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
+tInfBinaryOp t (AST.BinaryOpReferencePlus, p) e1 e2 = do
+    t' <- newTypeVar "ref"
+    tInfExpr (TPointer t') e1
+    tInfExpr TInt e2
+    void $ mgu (Just p) t (TPointer t')
+tInfBinaryOp t (AST.BinaryOpReferenceSubtr, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpReferencePlus, p) e1 e2
+tInfBinaryOp t (AST.BinaryOpReferenceReferenceSubtr, p) e1 e2 = do
+    t' <- newTypeVar "ref"
+    tInfExpr (TPointer t') e1
+    tInfExpr (TPointer t') e2
+    void $ mgu (Just p) t TInt
 tInfBinaryOp t (AST.BinaryOpMult, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
 tInfBinaryOp t (AST.BinaryOpDiv, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
 tInfBinaryOp t (AST.BinaryOpMod, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2

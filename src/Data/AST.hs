@@ -297,6 +297,9 @@ data BinaryOperator' = BinaryOpOr
                      | BinaryOpConcat
                      | BinaryOpPlus
                      | BinaryOpSubtr
+                     | BinaryOpReferencePlus
+                     | BinaryOpReferenceSubtr
+                     | BinaryOpReferenceReferenceSubtr
                      | BinaryOpMult
                      | BinaryOpDiv
                      | BinaryOpMod
@@ -317,6 +320,9 @@ instance PrettyPrint BinaryOperator where
     prettyPrint (BinaryOpConcat, _) = ":"
     prettyPrint (BinaryOpPlus, _) = "+"
     prettyPrint (BinaryOpSubtr, _) = "-"
+    prettyPrint (BinaryOpReferencePlus, _) = "&+"
+    prettyPrint (BinaryOpReferenceSubtr, _) = "&-"
+    prettyPrint (BinaryOpReferenceReferenceSubtr, _) = "&-&"
     prettyPrint (BinaryOpMult, _) = "*"
     prettyPrint (BinaryOpDiv, _) = "/"
     prettyPrint (BinaryOpMod, _) = "%"
@@ -364,6 +370,9 @@ binaryOperatorPrecedence' BinaryOpGTE = 4
 binaryOperatorPrecedence' BinaryOpConcat = 5
 binaryOperatorPrecedence' BinaryOpPlus = 6
 binaryOperatorPrecedence' BinaryOpSubtr = 6
+binaryOperatorPrecedence' BinaryOpReferencePlus = 6
+binaryOperatorPrecedence' BinaryOpReferenceSubtr = 6
+binaryOperatorPrecedence' BinaryOpReferenceReferenceSubtr = 6
 binaryOperatorPrecedence' BinaryOpMult = 7
 binaryOperatorPrecedence' BinaryOpDiv = 7
 binaryOperatorPrecedence' BinaryOpMod = 7
@@ -388,6 +397,9 @@ binaryOperatorAssociativity' BinaryOpGTE = ALeft
 binaryOperatorAssociativity' BinaryOpConcat = ARight
 binaryOperatorAssociativity' BinaryOpPlus = ALeft
 binaryOperatorAssociativity' BinaryOpSubtr = ALeft
+binaryOperatorAssociativity' BinaryOpReferencePlus = ALeft
+binaryOperatorAssociativity' BinaryOpReferenceSubtr = ALeft
+binaryOperatorAssociativity' BinaryOpReferenceReferenceSubtr = ALeft
 binaryOperatorAssociativity' BinaryOpMult = ALeft
 binaryOperatorAssociativity' BinaryOpDiv = ALeft
 binaryOperatorAssociativity' BinaryOpMod = ALeft

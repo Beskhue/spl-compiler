@@ -37,6 +37,9 @@ instance Show TokenP where
 
 data Operator = OAssignment
               | OPlus
+              | OReferencePlus
+              | OReferenceMinus
+              | OReferenceReferenceMinus
               | ODivide
               | OMod
               | OEq

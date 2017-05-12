@@ -83,6 +83,9 @@ recognizers = [ -- End of file
                 -- Operators
                 constructRecognizer 8 "=" (\s -> TOperator OAssignment),
                 constructRecognizer 8 "\\+" (\s -> TOperator OPlus),
+                constructRecognizer 8 "&\\+" (\s -> TOperator OReferencePlus),
+                constructRecognizer 8 "&\\-" (\s -> TOperator OReferenceMinus),
+                constructRecognizer 8 "&\\-&" (\s -> TOperator OReferenceReferenceMinus),
                 constructRecognizer 8 "/" (\s -> TOperator ODivide),
                 constructRecognizer 8 "%" (\s -> TOperator OMod),
                 constructRecognizer 8 "==" (\s -> TOperator OEq),

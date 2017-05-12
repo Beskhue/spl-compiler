@@ -1,0 +1,6 @@
+main () {
+    var tuple = (1,42);
+    var tPointer = (Int*) tuple;
+    print(*tPointer);
+    print(*(tPointer &- 1));
+}
