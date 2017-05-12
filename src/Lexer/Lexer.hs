@@ -65,9 +65,10 @@ recognizers = [ -- End of file
                 constructRecognizer 13 "," (\s -> TPunctuator PComma),
                 constructRecognizer 13 "\\->" (\s -> TPunctuator PMapTo),
                 constructRecognizer 13 "\\-" (\s -> TPunctuator PMinus),
-                constructRecognizer 8 "\\*" (\s -> TPunctuator PAsterisk),
-                constructRecognizer 8 "\\&" (\s -> TPunctuator PAmpersand),
+                constructRecognizer 13 "\\*" (\s -> TPunctuator PAsterisk),
+                constructRecognizer 13 "\\&" (\s -> TPunctuator PAmpersand),
                 constructRecognizer 13 "::" (\s -> TPunctuator PFunType),
+                constructRecognizer 13 "\\|\\|" (\s -> TPunctuator PPipe),
                 -- Keywords
                 constructRecognizer 10 "var" (\s -> TKeyword KVar),
                 constructRecognizer 10 "if" (\s -> TKeyword KIf),
@@ -90,7 +91,7 @@ recognizers = [ -- End of file
                 constructRecognizer 8 "<=" (\s -> TOperator OLTE),
                 constructRecognizer 8 ">=" (\s -> TOperator OGTE),
                 constructRecognizer 8 "!=" (\s -> TOperator ONEq),
-                constructRecognizer 8 "\\|\\|" (\s -> TOperator OOr),
+
                 constructRecognizer 8 ":" (\s -> TOperator OConcat),
                 constructRecognizer 8 "!" (\s -> TOperator ONeg),
                 -- Fields

@@ -46,7 +46,6 @@ data Operator = OAssignment
               | OGTE
               | ONEq
               | OAnd
-              | OOr
               | OConcat
               | ONeg
                 deriving (Show, Eq)
@@ -89,6 +88,8 @@ data Punctuator = PSeparator
                 | PMinus
                 | PAsterisk
                 | PAmpersand
+                | PPipe
+                | PTilde
                   deriving (Show, Eq)
 
 data Whitespace = WNewline

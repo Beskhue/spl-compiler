@@ -375,6 +375,7 @@ pUnaryOperator =
                 TP (TPunctuator PMinus) p -> Just (AST.UnaryOpSubtr, p)
                 TP (TPunctuator PAmpersand) p -> Just (AST.UnaryOpReference, p)
                 TP (TPunctuator PAsterisk) p -> Just (AST.UnaryOpDereference, p)
+                TP (TPunctuator PTilde) p -> Just (AST.UnaryOpBitwiseNot, p)
                 _ -> Nothing
         ) <|> ( do
             TP _ p <- tok (TPunctuator PParenOpen)
@@ -387,7 +388,6 @@ pBinaryOperator :: Parser AST.BinaryOperator
 pBinaryOperator = tokenPrim show advance
     (
         \tp -> case tp of
-            TP (TOperator OOr) p -> Just (AST.BinaryOpOr, p)
             TP (TOperator OEq) p -> Just (AST.BinaryOpEq, p)
             TP (TOperator ONEq) p -> Just (AST.BinaryOpNEq, p)
             TP (TOperator OLT) p -> Just (AST.BinaryOpLT, p)
@@ -401,10 +401,18 @@ pBinaryOperator = tokenPrim show advance
             TP (TOperator ODivide) p -> Just (AST.BinaryOpDiv, p)
             TP (TOperator OMod) p -> Just (AST.BinaryOpMod, p)
             _ -> Nothing
-    ) <|> ( do
+    ) <|> try ( do
         TP _ p <- tok (TPunctuator PAmpersand)
-        tok (TPunctuator PAmpersand)
-        return (AST.BinaryOpAnd, p)
+        t <- pPeek
+        case t of
+            TPunctuator PAmpersand -> do
+                tok (TPunctuator PAmpersand)
+                return (AST.BinaryOpAnd, p)
+            _ -> return (AST.BinaryOpBitwiseAnd, p)
+    ) <|> try ( do
+        TP _ p <- tok (TPunctuator PPipe)
+        tok (TPunctuator PPipe)
+        return (AST.BinaryOpOr, p)
     ) <?> "a binary operator"
 
 pField :: Parser AST.Field

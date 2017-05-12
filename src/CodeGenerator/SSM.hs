@@ -649,7 +649,7 @@ genAddressOfFields fields = do
 
 genConstant :: AST.Constant -> Gen ()
 genConstant (AST.ConstInt i, _) = push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber i) Nothing
-genConstant (AST.ConstChar c, _) = push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ Char.digitToInt c) Nothing
+genConstant (AST.ConstChar c, _) = push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ Char.ord c) Nothing
 genConstant (AST.ConstBool b, _) = let n = if b then -1 else 0 in
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ n) Nothing
 genConstant (AST.ConstEmptyList, _) = do
@@ -662,13 +662,16 @@ genConstant (AST.ConstEmptyList, _) = do
 
 genUnaryOp :: AST.UnaryOperator -> Gen ()
 genUnaryOp (AST.UnaryOpNeg, _) = push $ SSMLine Nothing (Just $ ICompute ONot) Nothing
+genUnaryOp (AST.UnaryOpBitwiseNot, _) = push $ SSMLine Nothing (Just $ ICompute ONot) Nothing
 genUnaryOp (AST.UnaryOpSubtr, _) = push $ SSMLine Nothing (Just $ ICompute ONeg) Nothing
 genUnaryOp (AST.UnaryOpCast _, _) = return ()
 genUnaryOp (AST.UnaryOpDereference, _) = push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber 0) Nothing
 
 genBinaryOp :: AST.BinaryOperator -> Checker.Type -> Checker.Type -> Gen ()
 genBinaryOp (AST.BinaryOpOr, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OOr) Nothing
+genBinaryOp (AST.BinaryOpBitwiseOr, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OOr) Nothing
 genBinaryOp (AST.BinaryOpAnd, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OAnd) Nothing
+genBinaryOp (AST.BinaryOpBitwiseAnd, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OAnd) Nothing
 genBinaryOp (AST.BinaryOpEq, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
 --genBinaryOp (AST.BinaryOpEq, _) Checker.TBool Checker.TBool = push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
 --genBinaryOp (AST.BinaryOpEq, _) _ _ = do -- address, char or int equals

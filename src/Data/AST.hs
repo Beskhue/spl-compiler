@@ -268,6 +268,7 @@ instance (ASTEq Constant) where
     astEq _ _ = False
 
 data UnaryOperator'  = UnaryOpNeg
+                     | UnaryOpBitwiseNot
                      | UnaryOpSubtr
                      | UnaryOpCast Type
                      | UnaryOpReference
@@ -277,6 +278,7 @@ type UnaryOperator   = (UnaryOperator', Pos)
 
 instance PrettyPrint UnaryOperator where
     prettyPrint (UnaryOpNeg, _) = "!"
+    prettyPrint (UnaryOpBitwiseNot, _) = "~"
     prettyPrint (UnaryOpSubtr, _) = "-"
     prettyPrint (UnaryOpCast t, _) = "(" ++ prettyPrint t ++ ")"
     prettyPrint (UnaryOpReference, _) = "&"
@@ -286,7 +288,9 @@ instance (ASTEq UnaryOperator) where
     astEq (uOp1, _) (uOp2, _) = uOp1 == uOp2
 
 data BinaryOperator' = BinaryOpOr
+                     | BinaryOpBitwiseOr
                      | BinaryOpAnd
+                     | BinaryOpBitwiseAnd
                      | BinaryOpEq
                      | BinaryOpNEq
                      | BinaryOpLT
@@ -304,7 +308,9 @@ type BinaryOperator  = (BinaryOperator', Pos)
 
 instance PrettyPrint BinaryOperator where
     prettyPrint (BinaryOpOr, _) = "||"
+    prettyPrint (BinaryOpBitwiseOr, _) = "|"
     prettyPrint (BinaryOpAnd, _) = "&&"
+    prettyPrint (BinaryOpBitwiseAnd, _) = "&"
     prettyPrint (BinaryOpEq, _) = "=="
     prettyPrint (BinaryOpNEq, _) = "!="
     prettyPrint (BinaryOpLT, _) = "<"
@@ -349,7 +355,9 @@ instance (ASTEq Identifier) where
 
 binaryOperatorPrecedence' :: BinaryOperator' -> Int
 binaryOperatorPrecedence' BinaryOpOr = 1
+binaryOperatorPrecedence' BinaryOpBitwiseOr = 1
 binaryOperatorPrecedence' BinaryOpAnd = 2
+binaryOperatorPrecedence' BinaryOpBitwiseAnd = 2
 binaryOperatorPrecedence' BinaryOpEq = 3
 binaryOperatorPrecedence' BinaryOpNEq = 3
 binaryOperatorPrecedence' BinaryOpLT = 4
@@ -371,7 +379,9 @@ data Associativity = ALeft | ARight
 
 binaryOperatorAssociativity' :: BinaryOperator' -> Associativity
 binaryOperatorAssociativity' BinaryOpOr = ALeft
+binaryOperatorAssociativity' BinaryOpBitwiseOr = ALeft
 binaryOperatorAssociativity' BinaryOpAnd = ALeft
+binaryOperatorAssociativity' BinaryOpBitwiseAnd = ALeft
 binaryOperatorAssociativity' BinaryOpEq = ALeft
 binaryOperatorAssociativity' BinaryOpNEq = ALeft
 binaryOperatorAssociativity' BinaryOpLT = ALeft

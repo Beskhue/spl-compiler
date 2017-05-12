@@ -451,6 +451,9 @@ tInfUnaryOp :: Type -> AST.UnaryOperator -> AST.Expression -> TInf ()
 tInfUnaryOp t (AST.UnaryOpNeg, p) e = do
     tInfExpr TBool e
     void $ mgu (Just p) t TBool
+tInfUnaryOp t (AST.UnaryOpBitwiseNot, p) e = do
+    tInfExpr TInt e
+    void $ mgu (Just p) t TInt
 tInfUnaryOp t (AST.UnaryOpSubtr, p) e = do
     tInfExpr TInt e
     void $ mgu (Just p) t TInt
@@ -472,7 +475,12 @@ tInfBinaryOp t (AST.BinaryOpOr, p) e1 e2 = do
     tInfExpr TBool e1
     tInfExpr TBool e2
     void $ mgu (Just p) t TBool
+tInfBinaryOp t (AST.BinaryOpBitwiseOr, p) e1 e2 = do
+    tInfExpr TInt e1
+    tInfExpr TInt e2
+    void $ mgu (Just p) t TInt
 tInfBinaryOp t (AST.BinaryOpAnd, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpOr, p) e1 e2
+tInfBinaryOp t (AST.BinaryOpBitwiseAnd, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpBitwiseOr, p) e1 e2
 tInfBinaryOp t (AST.BinaryOpEq, p) e1 e2 = do
     t' <- newTypeVar "expr"
     tInfExpr t' e1
