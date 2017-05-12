@@ -95,6 +95,7 @@ data SSMLoad = LConstant SSMArgument
              | LHeapMultiple SSMArgument SSMArgument
              | LMark SSMArgument
              | LAddress SSMArgument
+             | LLocalAddress SSMArgument
              | LRegister SSMArgument
              | LRegisterFromRegister SSMArgument SSMArgument
              | LStackAddress SSMArgument
@@ -109,6 +110,7 @@ instance Display SSMLoad where
     display (LHeapMultiple arg1 arg2) = "ldmh " ++ display arg1 ++ " " ++ display arg2
     display (LMark arg) = "ldl " ++ display arg
     display (LAddress arg) = "lda " ++ display arg
+    display (LLocalAddress arg) = "ldla " ++ display arg
     display (LRegister arg) = "ldr " ++ display arg
     display (LRegisterFromRegister arg1 arg2) = "ldrr " ++ display arg1 ++ " " ++ display arg2
     display (LStackAddress arg) = "ldsa " ++ display arg
@@ -479,6 +481,7 @@ genExpression (AST.ExprIdentifierField i f, _) = do
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "load global " ++ Checker.idName i)
             -- Load the value at the address of (the end of the program code + offset)
             push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) Nothing
+            push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
         Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber offset) (Just $ "load local " ++ Checker.idName i)
         Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
     genFields f
@@ -574,6 +577,7 @@ genExpression (AST.ExprFunCall i args, p) = do
             -- Clean up
             push $ SSMLine (Just lblCleanUp) (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
             genPrintChar ']'
+        genPrint (Checker.TPointer _) = push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
         genPrint (Checker.TVar _) = return ()
 
 genExpression (AST.ExprConstant c, _) = genConstant c
@@ -582,8 +586,9 @@ genExpression (AST.ExprTuple e1 e2, _) = do
     genExpression e1
     push $ SSMLine Nothing (Just $ IStore $ SHeapMultiple $ ANumber 2) (Just "tuple")
 genExpression (AST.ExprUnaryOp op e, _) = do
-    genExpression e
-    genUnaryOp op
+    case op of
+        (AST.UnaryOpReference, _) -> genAddressOfExpression e
+        _ -> genExpression e >> genUnaryOp op
 genExpression (AST.ExprBinaryOp op e1@(_, p1) e2@(_, p2), _) = do
     a <- getASTAnnotation
     case Map.lookup p1 a of
@@ -594,7 +599,6 @@ genExpression (AST.ExprBinaryOp op e1@(_, p1) e2@(_, p2), _) = do
                     genExpression e2
                     genBinaryOp op t1 t2
 
-
 genFields :: [AST.Field] -> Gen ()
 genFields fields = liftM id (mapM genField fields) >> return ()
     where
@@ -603,6 +607,45 @@ genFields fields = liftM id (mapM genField fields) >> return ()
         genField (AST.FieldTl, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) Nothing
         genField (AST.FieldFst, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) Nothing
         genField (AST.FieldSnd, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
+
+genAddressOfExpression :: AST.Expression -> Gen ()
+genAddressOfExpression (AST.ExprIdentifier i, p) = do
+    location <- getVariable $ Checker.idName i
+    case location of
+        Just (SGlobal, offset) -> do -- Load a global
+            -- Load the address of the end of the program code
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "load address of global " ++ Checker.idName i)
+            -- Load the value at the address of (the end of the program code + offset)
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber (endPCToStartStackOffset + offset)) Nothing
+            push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+        Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LLocalAddress $ ANumber offset) (Just $ "load address of local " ++ Checker.idName i)
+        Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
+genAddressOfExpression (AST.ExprIdentifierField i f, _) = do -- TODO: check whether this implementation is correct
+    location <- getVariable $ Checker.idName i
+    case location of
+        Just (SGlobal, offset) -> do -- Load a global
+            -- Load the address of the end of the program code
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel "__end_pc") (Just $ "load global " ++ Checker.idName i)
+            -- Load the value at the address of (the end of the program code + offset)
+            push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) Nothing
+            push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+        Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber offset) (Just $ "load local " ++ Checker.idName i)
+        Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
+    genAddressOfFields f
+genAddressOfExpression (AST.ExprUnaryOp (AST.UnaryOpDereference, _) e, _) = genAddressOfExpression e
+genAddressOfExpression _ = throwError "cannot take address a temporary value expression"
+
+genAddressOfFields :: [AST.Field] -> Gen ()
+genAddressOfFields fields = do
+    genFields $ init fields
+    case last fields of
+        (AST.FieldHd, _) -> do
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+        (AST.FieldSnd, _) -> do
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+        _ -> return ()
 
 genConstant :: AST.Constant -> Gen ()
 genConstant (AST.ConstInt i, _) = push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber i) Nothing
@@ -621,6 +664,7 @@ genUnaryOp :: AST.UnaryOperator -> Gen ()
 genUnaryOp (AST.UnaryOpNeg, _) = push $ SSMLine Nothing (Just $ ICompute ONot) Nothing
 genUnaryOp (AST.UnaryOpSubtr, _) = push $ SSMLine Nothing (Just $ ICompute ONeg) Nothing
 genUnaryOp (AST.UnaryOpCast _, _) = return ()
+genUnaryOp (AST.UnaryOpDereference, _) = push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber 0) Nothing
 
 genBinaryOp :: AST.BinaryOperator -> Checker.Type -> Checker.Type -> Gen ()
 genBinaryOp (AST.BinaryOpOr, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OOr) Nothing
@@ -731,6 +775,7 @@ instance SSMPost SSMLoad where
     renameLabel f t (LHeapMultiple a1 a2) = LHeapMultiple (renameLabel f t a1) (renameLabel f t a2)
     renameLabel f t (LMark a) = LMark $ renameLabel f t a
     renameLabel f t (LAddress a) = LAddress $ renameLabel f t a
+    renameLabel f t (LLocalAddress a) = LLocalAddress $ renameLabel f t a
     renameLabel f t (LRegister a) = LRegister $ renameLabel f t a
     renameLabel f t (LRegisterFromRegister a1 a2) = LRegisterFromRegister (renameLabel f t a1) (renameLabel f t a2)
     renameLabel f t (LStackAddress a) = LStackAddress $ renameLabel f t a
