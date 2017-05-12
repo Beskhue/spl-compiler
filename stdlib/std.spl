@@ -1,0 +1,23 @@
+printHex(n) :: Int -> Void
+{
+    print('0');
+    print('x');
+    var mask = 0x10000000;
+    var i = 0;
+    while(i < 8) {
+        var res = (n & (mask * 15)) / mask;
+        mask = mask / 16;
+        if(res < 10) {
+            print(res);
+        } else {
+            print((Char) (55 + res));
+        }
+        
+        i = i + 1;
+    } 
+}
+
+main()
+{ 
+    printHex(23033);
+}
