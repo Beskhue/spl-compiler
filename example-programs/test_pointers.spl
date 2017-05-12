@@ -1,0 +1,18 @@
+main () {
+    var a = (1, 'a') : (2, 'b') : [];
+    var b = &a;
+    //var cIllegal = &&a; // Not allowed, &a is not a persistent value
+    var c = &b;
+    var d = &*b; // Allowed! *b is a persistent value (as it is pointed to by b)
+    var e = *c;
+    
+    var f = **c;
+    print(f.tl.hd);
+    
+    var g = &a.tl;
+    print(*g);
+    
+    var h = ((2 : [], 'a'), (True : False : [], (1, 2)));
+    var i = &h.snd;
+    print(*i);
+}
