@@ -341,6 +341,8 @@ genSPL decls = do
         _ -> False) decls)))
     -- Add label to end of PC
     push $ SSMLine (Just "__end_pc") (Just $ IControl CNop) Nothing
+    -- Generate the built-in assembly library
+    genLibrary
     -- Optimize and output generated SSM
     st <- get
     return $ optimize $ ssm st
@@ -462,27 +464,6 @@ genExpression (AST.ExprFunCall i args, p) = do
             push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) (Just "start isEmpty")
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
             push $ SSMLine Nothing (Just $ ICompute OEq) (Just "end isEmpty")
-        "length" -> do
-            -- Start with 0 length
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 0) (Just "start length")
-            push $ SSMLine Nothing (Just $ IControl CSwap) Nothing
-            -- Copy heap address
-            push $ SSMLine Nothing (Just $ IStore $ SStack $ ANumber 1) Nothing
-            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber 2) Nothing
-            -- Get next address of the list, if it is -1 the list is empty
-            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ 0) Nothing
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
-            push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
-            -- If the list is empty, skip loop -- jump to clean up
-            push $ SSMLine Nothing (Just $ IControl $ CBranchTrue $ ANumber 8) Nothing
-            -- Otherwise load the next address of the list
-            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ 0) Nothing
-            -- And increment the counter
-            push $ SSMLine Nothing (Just $ IControl CSwap) Nothing
-            genUtilIncrement
-            push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ANumber $ -20) Nothing
-            -- Clean up
-            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) (Just "end length")
         _ -> do
             -- Jump to function
             push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel $ Checker.idName i) Nothing
@@ -684,6 +665,44 @@ instance Locals AST.Statement where
     numLocals (AST.StmtBlock stmts, _) = numLocals stmts
     numLocals (AST.StmtWhile _ s, _) = numLocals s
     numLocals _ = 0
+
+--------------------------------------------------------------------------------
+-- Built-in assembly library functions
+
+genLibrary :: Gen ()
+genLibrary = genLength
+
+genLength :: Gen ()
+genLength = do
+    start <- getFreshLabel
+    end <- getFreshLabel
+    push $ SSMLine (Just "length") (Just $ IControl $ CLink $ ANumber 2) Nothing
+    -- Start with 0 length
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 0) (Just "start length")
+    push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber 1) Nothing
+    -- Copy heap address
+    push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber $ -2) Nothing
+    push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber 2) Nothing
+    -- Get next address of the list, if it is -1 the list is empty
+    push $ SSMLine (Just start) (Just $ ILoad $ LMark $ ANumber $ 2) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
+    push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
+    -- If the list is empty, skip loop -- jump to clean up
+    push $ SSMLine Nothing (Just $ IControl $ CBranchTrue $ ALabel end) Nothing
+    -- Otherwise load the next address of the list
+    push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber $ 2) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ 0) Nothing
+    push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber $ 2) Nothing
+    -- And increment the counter
+    push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber 1) Nothing
+    genUtilIncrement
+    push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber 1) Nothing
+    push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel start) Nothing
+    -- Clean up
+    push $ SSMLine (Just end) (Just $ ILoad $ LMark $ ANumber 1) Nothing
+    push $ SSMLine Nothing (Just $ IStore $ SRegister $ ARegister RReturnRegister) Nothing
+    push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
+    push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
 
 --------------------------------------------------------------------------------
 
