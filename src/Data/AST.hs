@@ -89,14 +89,12 @@ instance (ASTEq FunDecl) where
     astEq _ _ = False
 
 data FunType'        = FunType [Type] Type
-                     | FunTypeVoid [Type]
                        deriving (Eq, Show)
 type FunType         = (FunType', Pos)
 
 instance PrettyPrint FunType where
     prettyPrint (f, _) = case f of
         FunType argTypes returnType -> printArgsTypes argTypes ++ "-> " ++ prettyPrint returnType
-        FunTypeVoid argTypes -> printArgsTypes argTypes ++ "-> Void"
         where
             printArgsTypes :: [Type] -> String
             printArgsTypes [] = ""
@@ -104,10 +102,9 @@ instance PrettyPrint FunType where
 
 instance (ASTEq FunType) where
     astEq (FunType ts1 t1, _) (FunType ts2 t2, _) = astEq ts1 ts2 && astEq t1 t2
-    astEq (FunTypeVoid ts1, _) (FunTypeVoid ts2, _) = astEq ts1 ts2
-    astEq _ _ = False
 
-data Type'           = TypeTuple Type Type
+data Type'           = TypeVoid
+                     | TypeTuple Type Type
                      | TypeList Type
                      | TypeInt
                      | TypeBool
@@ -118,6 +115,7 @@ data Type'           = TypeTuple Type Type
 type Type            = (Type', Pos)
 
 instance PrettyPrint Type where
+    prettyPrint (TypeVoid, _) = "Void"
     prettyPrint (TypeTuple t1 t2, _) = "(" ++ prettyPrint t1 ++ "," ++ prettyPrint t2 ++ ")"
     prettyPrint (TypeList t, _) = "[" ++ prettyPrint t ++ "]"
     prettyPrint (TypeInt, _) = "Int"
@@ -127,6 +125,7 @@ instance PrettyPrint Type where
     prettyPrint (TypePointer t, _) = prettyPrint t ++ "*"
 
 instance (ASTEq Type) where
+    astEq (TypeVoid, _) (TypeVoid, _) = True
     astEq (TypeTuple t1 t1', _) (TypeTuple t2 t2', _) = astEq t1 t2 && astEq t1' t2'
     astEq (TypeList t1, _) (TypeList t2, _) = astEq t1 t2
     astEq (TypeInt, _) (TypeInt, _) = True

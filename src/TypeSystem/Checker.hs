@@ -906,6 +906,7 @@ instance Dependencies AST.Identifier where
 
 translateType :: Pos.Pos -> Type -> AST.Type
 translateType p (TVar str)         = (AST.TypeIdentifier (AST.Identifier str, p), p)
+translateType p TVoid              = (AST.TypeVoid, p)
 translateType p TBool              = (AST.TypeBool, p)
 translateType p TInt               = (AST.TypeInt, p)
 translateType p TChar              = (AST.TypeChar, p)
@@ -914,11 +915,11 @@ translateType p (TTuple t1 t2)     = (AST.TypeTuple (translateType p t1) (transl
 translateType p (TPointer t)       = (AST.TypePointer $ translateType p t, p)
 
 translateFunType :: Pos.Pos -> Type -> AST.FunType
-translateFunType p (TFunction args TVoid) = (AST.FunTypeVoid (map (translateType p) args), p)
 translateFunType p (TFunction args body) = (AST.FunType (map (translateType p) args) (translateType p body), p)
 
 rTranslateType :: AST.Type -> Type
 rTranslateType (AST.TypeIdentifier id, _) = TVar $ idName id
+rTranslateType (AST.TypeVoid, _)          = TVoid
 rTranslateType (AST.TypeBool, _)          = TBool
 rTranslateType (AST.TypeInt, _)           = TInt
 rTranslateType (AST.TypeChar, _)          = TChar
@@ -927,7 +928,6 @@ rTranslateType (AST.TypeTuple t1 t2, _)   = TTuple (rTranslateType t1) (rTransla
 rTranslateType (AST.TypePointer t, _)     = TPointer $ rTranslateType t
 
 rTranslateFunType :: AST.FunType -> Type
-rTranslateFunType (AST.FunTypeVoid args, _)  = TFunction (map rTranslateType args) TVoid
 rTranslateFunType (AST.FunType args body, _) = TFunction (map rTranslateType args) (rTranslateType body)
 
 -- |Class to rewrite the AST with type substitutions
@@ -954,7 +954,6 @@ instance RewriteAST AST.FunDecl where
 
 instance RewriteAST AST.FunType where
     rewrite s (AST.FunType ts t, p) = (AST.FunType (rewrite s ts) (rewrite s t), p)
-    rewrite s (AST.FunTypeVoid ts, p) = (AST.FunTypeVoid (rewrite s ts), p)
 
 instance RewriteAST AST.Statement where
     rewrite s (AST.StmtVarDecl v, p) = (AST.StmtVarDecl (rewrite s v), p)

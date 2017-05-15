@@ -123,14 +123,8 @@ pFunType :: Parser AST.FunType
 pFunType = (do
         types <- many pType <?> "argument types"
         TP _ p <- tok (TPunctuator PMapTo) <?> "a 'maps to' symbol (->)"
-        t <- pPeek
-        case t of
-            TType Data.Token.TypeVoid -> do
-                tok (TType Data.Token.TypeVoid)
-                return (AST.FunTypeVoid types, p)
-            _ -> do
-                returnType <- pType <?> "a return type"
-                return (AST.FunType types returnType, p)
+        returnType <- pType <?> "a return type"
+        return (AST.FunType types returnType, p)
     ) <?> "a function type"
 
 pType :: Parser AST.Type
@@ -167,6 +161,10 @@ pTypeList = (do
 
 pTypeBasic :: Parser AST.Type
 pTypeBasic = ((do
+        TP _ p <- tok (TType Data.Token.TypeVoid)
+        return (AST.TypeVoid, p)
+    ) <|>
+    (do
         TP _ p <- tok (TType Data.Token.TypeInt)
         return (AST.TypeInt, p)
     ) <|>
@@ -177,7 +175,7 @@ pTypeBasic = ((do
     (do
         TP _ p <- tok (TType Data.Token.TypeChar)
         return (AST.TypeChar, p)
-    )) <?> "a basic type (int, bool, char)"
+    )) <?> "a basic type (Void, Int, Bool, Char)"
 
 pTypeIdentifier :: Parser AST.Type
 pTypeIdentifier = (do
