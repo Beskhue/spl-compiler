@@ -48,7 +48,18 @@ pPeek :: Parser Token
 pPeek = lookAhead $ tokenPrim show advance (\(TP t p) -> Just t)
 
 pSPL :: Parser AST.SPL
-pSPL = many1 pDecl
+pSPL = do
+    includes <- many pInclude
+    decls <- many1 pDecl
+    return $ includes ++ decls
+
+pInclude :: Parser AST.Decl
+pInclude = tokenPrim show advance
+    (
+        \tp -> case tp of
+            TP (TInclude s) p -> Just (AST.DeclI (AST.IncludeDecl s, p), p)
+            _ -> Nothing
+    ) <?> "an include statement"
 
 -- TODO: get rid of 'try'
 pDecl :: Parser AST.Decl

@@ -20,6 +20,7 @@ data Token = TKeyword Keyword
            | TPunctuator Punctuator
            | TWhitespace Whitespace
            | TComment Int -- Int encodes how many lines the comment spans
+           | TInclude String
            | TEOF
              deriving (Show, Eq)
 

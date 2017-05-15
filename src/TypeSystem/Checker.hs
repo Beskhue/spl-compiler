@@ -37,14 +37,14 @@ import qualified Data.AST as AST
 
 ------------------------------------------------------------------------------------------------------------------------
 
-check :: Bool -> AST.SPL -> Either String (AST.SPL, ASTAnnotation)
-check preserveDeclOrder spl = res
+check :: Bool -> TypeCtx -> AST.SPL -> Either String (AST.SPL, ASTAnnotation)
+check preserveDeclOrder includedCtx spl = res
     where
-        (res, _) = runTInf $ tInfSPL preserveDeclOrder spl
+        (res, _) = runTInf $ tInfSPL preserveDeclOrder includedCtx spl
 
-checkDet :: Bool -> AST.SPL -> (AST.SPL, ASTAnnotation)
-checkDet preserveDeclOrder spl =
-    case check preserveDeclOrder spl of
+checkDet :: Bool -> TypeCtx -> AST.SPL -> (AST.SPL, ASTAnnotation)
+checkDet preserveDeclOrder includedCtx spl =
+    case check preserveDeclOrder includedCtx spl of
         Left err -> Trace.trace (show err) undefined
         Right spl' -> spl'
 
@@ -522,10 +522,20 @@ tInfBinaryOp t (AST.BinaryOpMod, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p)
 
 ------------------------------------------------------------------------------------------------------------------------
 
+splitDeclsIncludes :: AST.SPL -> (AST.SPL, AST.SPL)
+splitDeclsIncludes [] = ([], [])
+splitDeclsIncludes (decl:decls) =
+    let (decls', includes') = splitDeclsIncludes decls in
+        case decl of
+            d@(AST.DeclI _, _) -> (decls', d:includes')
+            d@(AST.DeclV _, _) -> (d:decls', includes')
+            d@(AST.DeclF _, _) -> (d:decls', includes')
+
 -- |Perform type inference on the global SPL declarations. Rewrite the AST such that all variables are typed as
 -- completely as possible.
-tInfSPL :: Bool -> AST.SPL -> TInf (AST.SPL, ASTAnnotation)
-tInfSPL preserveDeclOrder decls = do
+tInfSPL :: Bool -> TypeCtx -> AST.SPL -> TInf (AST.SPL, ASTAnnotation)
+tInfSPL preserveDeclOrder includedCtx decls' = do
+    let (decls, includes) = splitDeclsIncludes decls'
     ctx <- ask
     let deps = tInfSPLGraph decls
     let (graph, vertexToEdge, keyToVertex) = Graph.graphFromEdges deps
@@ -536,11 +546,15 @@ tInfSPL preserveDeclOrder decls = do
     let sccDecls = if preserveDeclOrder
         then map (map (\vertex -> (\d@(decl, _, _) -> (case elemIndex d deps of Just idx -> idx, decl)) $ vertexToEdge vertex) . snd) scc
         else numberAscending $ map (map (\vertex -> let d@(decl, _, _) = vertexToEdge vertex in decl) . snd) scc
-    let initCtx = Stack.stackPush ctx builtInCtx -- Create top scope
+
+    let (TypeCtx includedCtx') = includedCtx
+    let (TypeCtx builtInCtx') = builtInCtx
+    -- Create top scope
+    let initCtx = Stack.stackPush ctx (TypeCtx $ Map.union builtInCtx' includedCtx')
     spl <- local (const initCtx) (tInfSCCs decls sccDecls)
     s <- substitution
     st <- get
-    return (spl, apply s (astAnnotation st))
+    return (includes ++ spl, apply s (astAnnotation st))
     where
         numberAscending :: [[AST.Decl]] -> [[(Int, AST.Decl)]]
         numberAscending = numberAscending' 0

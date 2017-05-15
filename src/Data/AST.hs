@@ -32,19 +32,32 @@ instance (ASTEq a) => ASTEq [a] where
     astEq _ [] = False
     astEq (t1:ts1) (t2:ts2) = astEq t1 t2 && astEq ts1 ts2
 
-data Decl'           = DeclV VarDecl
+data Decl'           = DeclI IncludeDecl
+                     | DeclV VarDecl
                      | DeclF FunDecl
                        deriving (Eq, Show)
 type Decl            = (Decl', Pos)
 
 instance PrettyPrint Decl where
+    prettyPrint (DeclI i, _) = prettyPrint i
     prettyPrint (DeclV v, _) = prettyPrint v
     prettyPrint (DeclF f, _) = prettyPrint f ++ "\n"
 
 instance (ASTEq Decl) where
+    astEq (DeclI i1, _) (DeclI i2, _) = astEq i1 i2
     astEq (DeclV v1, _) (DeclV v2, _) = astEq v1 v2
     astEq (DeclF f1, _) (DeclF f2, _) = astEq f1 f2
     astEq _ _ = False
+
+data IncludeDecl'    = IncludeDecl String
+                       deriving (Eq, Show)
+type IncludeDecl     = (IncludeDecl', Pos)
+
+instance PrettyPrint IncludeDecl where
+    prettyPrint (IncludeDecl filePath, _) = "#include \"" ++ filePath ++ "\""
+
+instance (ASTEq IncludeDecl) where
+    astEq (IncludeDecl s1, _) (IncludeDecl s2, _) = s1 == s2
 
 data VarDecl'        = VarDeclTyped Type Identifier Expression
                      | VarDeclUntyped Identifier Expression
