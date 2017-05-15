@@ -684,15 +684,15 @@ genLength = do
     push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber $ -2) Nothing
     push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber 2) Nothing
     -- Get next address of the list, if it is -1 the list is empty
-    push $ SSMLine (Just start) (Just $ ILoad $ LMark $ ANumber $ 2) Nothing
+    push $ SSMLine (Just start) (Just $ ILoad $ LMark $ ANumber 2) Nothing
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
     push $ SSMLine Nothing (Just $ ICompute OEq) Nothing
     -- If the list is empty, skip loop -- jump to clean up
     push $ SSMLine Nothing (Just $ IControl $ CBranchTrue $ ALabel end) Nothing
     -- Otherwise load the next address of the list
-    push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber $ 2) Nothing
-    push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ 0) Nothing
-    push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber $ 2) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber 2) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) Nothing
+    push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber 2) Nothing
     -- And increment the counter
     push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber 1) Nothing
     genUtilIncrement
