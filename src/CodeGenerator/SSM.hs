@@ -647,6 +647,15 @@ genPrintChar c = do
 endPCToStartStackOffset :: Int
 endPCToStartStackOffset = 18
 
+genFunCall :: String -> Int -> Gen ()
+genFunCall str numArgs = do
+    -- Call function
+    push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel str) Nothing
+    -- Clean up stack
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ - numArgs) Nothing
+    -- Load returned value
+    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
+
 --------------------------------------------------------------------------------
 
 class Locals a where
@@ -703,6 +712,32 @@ genLength = do
     push $ SSMLine Nothing (Just $ IStore $ SRegister $ ARegister RReturnRegister) Nothing
     push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
+
+mAllocSmallestBlockSize :: Int
+mAllocSmallestBlockSize = 16     -- 2^4
+mAllocLargestBlockSize :: Int
+mAllocLargestBlockSize = 1048576 -- 2^20
+mAllocBlockMultiplier :: Int
+mAllocBlockMultiplier = 2
+mAllocMaxBlockOrder :: Int
+mAllocMaxBlockOrder = ceiling $ (log (fromIntegral mAllocLargestBlockSize) - log (fromIntegral mAllocSmallestBlockSize)) / log (fromIntegral mAllocBlockMultiplier)
+mAllocSystemSize :: Int
+mAllocSystemSize = 2 * ceiling (2 ** (fromIntegral mAllocMaxBlockOrder))
+
+genMalloc :: Gen ()
+genMalloc = do
+    push $ SSMLine (Just "malloc") (Just $ IControl $ CLink $ ANumber 0) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocSystemSize) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocMaxBlockOrder) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocBlockMultiplier) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocLargestBlockSize) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocSmallestBlockSize) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RHeapPointer) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber $ -2) Nothing
+    genFunCall "__malloc" 7 -- return register value set by __malloc will be used
+    push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
+    push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
+
 
 --------------------------------------------------------------------------------
 
