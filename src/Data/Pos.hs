@@ -12,6 +12,9 @@ module Data.Pos where
 data Pos = Pos { sourceName :: String, line :: !Int, column :: !Int }
            deriving (Ord, Eq)
 
+emptyPos :: Pos
+emptyPos = Pos {sourceName = "", line = 1, column = 1}
+
 instance Show Pos where
     show (Pos sourceName line column)
         | null sourceName = "(" ++ show line ++ "," ++ show column ++ ")"
