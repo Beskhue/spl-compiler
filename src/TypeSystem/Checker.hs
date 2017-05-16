@@ -253,10 +253,22 @@ instance Show TInfError where
     show (TInfError err pos) = show err ++ " at " ++ show pos
 
 instance Show TInfError' where
-    show (TInfErrorUnify t1 t2) = "Types do not unify: " ++ show t1 ++ " and " ++ show t2
-    show (TInfErrorOccursCheck s t) = "Free type variable " ++ s ++ "occurs in " ++ show t
-    show (TInfErrorExpectedTypeUnify t1 t2) = "Given type and inferred type are not the same. Given: " ++ show t1 ++ ". Inferred: " ++ show t2
-    show (TInfErrorExpectedTypeTooGeneral t1 t2) = "Given type is too general. Given: " ++ show t1 ++ ". Inferred: " ++ show t2
+    show (TInfErrorUnify t1 t2) = "Types do not unify: "
+        ++ AST.prettyPrint (translateType Pos.emptyPos t1)
+        ++ " and "
+        ++ AST.prettyPrint (translateType Pos.emptyPos t2)
+    show (TInfErrorOccursCheck s t) = "Free type variable "
+        ++ s
+        ++ "occurs in "
+        ++ AST.prettyPrint (translateType Pos.emptyPos t)
+    show (TInfErrorExpectedTypeUnify t1 t2) = "Given type and inferred type are not the same. Given: "
+        ++ AST.prettyPrint (translateType Pos.emptyPos t1)
+        ++ ". Inferred: "
+        ++ AST.prettyPrint (translateType Pos.emptyPos t2)
+    show (TInfErrorExpectedTypeTooGeneral t1 t2) = "Given type is too general. Given: "
+        ++ AST.prettyPrint (translateType Pos.emptyPos t1)
+        ++ ". Inferred: "
+        ++ AST.prettyPrint (translateType Pos.emptyPos t2)
     show (TInfErrorUnboundVariable s) = "Undefined variable: " ++ s
     show (TInfErrorVariableMultiplyDefined s) = "Variable multiply defined in scope: " ++ s
     show TInfErrorPersistentValueRequired = "Persistent value required for reference (&) operand"
