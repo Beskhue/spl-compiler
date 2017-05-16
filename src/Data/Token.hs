@@ -52,6 +52,8 @@ data Operator = OAssignment
               | OAnd
               | OConcat
               | ONeg
+              | OBitShiftLeft
+              | OBitShiftRight
                 deriving (Show, Eq)
 
 data Keyword = KVar

@@ -171,6 +171,7 @@ data SSMOperation = OAdd | OSub | OMul | ODiv | OMod
                   | OCmp
                   | OEq | ONeq
                   | OLt | OGt | OLe | OGe
+                  | OLsl | OLsr
                     deriving (Show, Eq)
 
 instance Display SSMOperation where
@@ -191,6 +192,8 @@ instance Display SSMOperation where
     display OGt = "gt"
     display OLe = "le"
     display OGe = "ge"
+    display OLsl = "lsl"
+    display OLsr = "lsr"
 
 data SSMControl = CBranchEq SSMArgument | CBranchNeq SSMArgument
                 | CBranchLt SSMArgument | CBranchGt SSMArgument
@@ -630,6 +633,8 @@ genBinaryOp (AST.BinaryOpReferenceReferenceSubtr, _) _ _ = push $ SSMLine Nothin
 genBinaryOp (AST.BinaryOpMult, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OMul) Nothing
 genBinaryOp (AST.BinaryOpDiv, _) _ _ = push $ SSMLine Nothing (Just $ ICompute ODiv) Nothing
 genBinaryOp (AST.BinaryOpMod, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OMod) Nothing
+genBinaryOp (AST.BinaryOpBitShiftLeft, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OLsl) Nothing
+genBinaryOp (AST.BinaryOpBitShiftRight, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OLsr) Nothing
 
 --------------------------------------------------------------------------------
 -- Some utilities

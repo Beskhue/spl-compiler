@@ -520,6 +520,8 @@ tInfBinaryOp t (AST.BinaryOpReferenceReferenceSubtr, p) e1 e2 = do
 tInfBinaryOp t (AST.BinaryOpMult, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
 tInfBinaryOp t (AST.BinaryOpDiv, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
 tInfBinaryOp t (AST.BinaryOpMod, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
+tInfBinaryOp t (AST.BinaryOpBitShiftLeft, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
+tInfBinaryOp t (AST.BinaryOpBitShiftRight, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
 
 ------------------------------------------------------------------------------------------------------------------------
 

@@ -416,6 +416,8 @@ pBinaryOperator = tokenPrim show advance
             TP (TPunctuator PAsterisk) p -> Just (AST.BinaryOpMult, p)
             TP (TOperator ODivide) p -> Just (AST.BinaryOpDiv, p)
             TP (TOperator OMod) p -> Just (AST.BinaryOpMod, p)
+            TP (TOperator OBitShiftLeft) p -> Just (AST.BinaryOpBitShiftLeft, p)
+            TP (TOperator OBitShiftRight) p -> Just (AST.BinaryOpBitShiftRight, p)
             _ -> Nothing
     ) <|> try ( do
         TP _ p <- tok (TPunctuator PAmpersand)

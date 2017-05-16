@@ -96,9 +96,10 @@ recognizers = [ -- End of file
                 constructRecognizer 8 "<=" (\s -> TOperator OLTE),
                 constructRecognizer 8 ">=" (\s -> TOperator OGTE),
                 constructRecognizer 8 "!=" (\s -> TOperator ONEq),
-
                 constructRecognizer 8 ":" (\s -> TOperator OConcat),
                 constructRecognizer 8 "!" (\s -> TOperator ONeg),
+                constructRecognizer 8 "<<" (\s -> TOperator OBitShiftLeft),
+                constructRecognizer 8 ">>" (\s -> TOperator OBitShiftRight),
                 -- Fields
                 constructRecognizer 7 "\\.hd" (\s -> TField FHd),
                 constructRecognizer 7 "\\.tl" (\s -> TField FTl),
