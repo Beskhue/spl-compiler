@@ -51,6 +51,7 @@ pSPL :: Parser AST.SPL
 pSPL = do
     includes <- many pInclude
     decls <- many1 pDecl
+    tok TEOF
     return $ includes ++ decls
 
 pInclude :: Parser AST.Decl
@@ -69,7 +70,7 @@ pDecl = try (do
     ) <|> (do
         (funDecl, p) <- pFunDecl
         return (AST.DeclF (funDecl, p), p)
-    )
+    ) <?> "a variable or function declaration"
 
 pVarDecl :: Parser AST.VarDecl
 pVarDecl = (do
