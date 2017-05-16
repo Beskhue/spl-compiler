@@ -334,7 +334,9 @@ genSPL decls = do
     scopes <- ask
     let scopes' = Stack.stackPush scopes (Map.fromList [(varDeclName, idx) | (idx, varDeclName) <- zip [0..] varDeclNames])
     local (const scopes') (liftM id (mapM genDecl varDecls))
-    -- First add a statement to branch to the main function
+    -- First initialize the memory allocator
+    genMallocInit
+    -- Add a statement to branch to the main function
     push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel "main") Nothing
     -- Halt
     push $ SSMLine Nothing (Just $ IControl CHalt) Nothing
@@ -724,24 +726,21 @@ mAllocSmallestBlockSize :: Int
 mAllocSmallestBlockSize = 16     -- 2^4
 mAllocLargestBlockSize :: Int
 mAllocLargestBlockSize = 1048576 -- 2^20
-mAllocBlockMultiplier :: Int
-mAllocBlockMultiplier = 2
-mAllocMaxBlockOrder :: Int
-mAllocMaxBlockOrder = ceiling $ (log (fromIntegral mAllocLargestBlockSize) - log (fromIntegral mAllocSmallestBlockSize)) / log (fromIntegral mAllocBlockMultiplier)
-mAllocSystemSize :: Int
-mAllocSystemSize = 2 * ceiling (2 ** (fromIntegral mAllocMaxBlockOrder))
+mAllocNumBlocks :: Int
+mAllocNumBlocks = ceiling $ (fromIntegral mAllocLargestBlockSize) / (fromIntegral mAllocSmallestBlockSize)
+
+genMallocInit :: Gen ()
+genMallocInit = do
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocNumBlocks) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocSmallestBlockSize) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RHeapPointer) Nothing
+    genFunCall "__malloc_init" 3
 
 genMalloc :: Gen ()
 genMalloc = do
     push $ SSMLine (Just "malloc") (Just $ IControl $ CLink $ ANumber 0) Nothing
-    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocSystemSize) Nothing
-    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocMaxBlockOrder) Nothing
-    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocBlockMultiplier) Nothing
-    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocLargestBlockSize) Nothing
-    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocSmallestBlockSize) Nothing
-    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RHeapPointer) Nothing
     push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber $ -2) Nothing
-    genFunCall "__malloc" 7 -- return register value set by __malloc will be used
+    genFunCall "__malloc" 1 -- return register value set by __malloc will be used
     push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
 
