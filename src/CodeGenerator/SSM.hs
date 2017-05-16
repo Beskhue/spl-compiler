@@ -679,7 +679,9 @@ instance Locals AST.Statement where
 -- Built-in assembly library functions
 
 genLibrary :: Gen ()
-genLibrary = genLength
+genLibrary = do
+    genLength
+    genMalloc
 
 genLength :: Gen ()
 genLength = do
