@@ -704,7 +704,7 @@ tInfFunDecl :: Type -> AST.FunDecl -> TInf (AST.FunDecl, String)
 tInfFunDecl t decl =
     case decl of
         (AST.FunDeclTyped identifier args annotatedType stmts, p) -> do
-            let annotatedT = rTranslateFunType annotatedType
+            let annotatedT = rTranslateType annotatedType
             (ast, str) <- tInfFunDecl' p t identifier args stmts
             t' <- substitute t
             s' <- mgu p annotatedT t' `catchError` (\_ ->
@@ -727,7 +727,7 @@ tInfFunDecl t decl =
                 let funType = TFunction argsTypes t''
                 mgu p t funType
                 funType' <- substitute funType
-                let funTypeAST = translateFunType p funType'
+                let funTypeAST = translateType p funType'
 
                 return ((AST.FunDeclTyped identifier args funTypeAST stmts', p), idName identifier))
             where
@@ -967,22 +967,18 @@ translateType p TChar              = (AST.TypeChar, p)
 translateType p (TList t)          = (AST.TypeList $ translateType p t, p)
 translateType p (TTuple t1 t2)     = (AST.TypeTuple (translateType p t1) (translateType p t2), p)
 translateType p (TPointer t)       = (AST.TypePointer $ translateType p t, p)
-
-translateFunType :: Pos.Pos -> Type -> AST.FunType
-translateFunType p (TFunction args body) = (AST.FunType (map (translateType p) args) (translateType p body), p)
+translateType p (TFunction args t) = (AST.TypeFunction (map (translateType p) args) (translateType p t), p)
 
 rTranslateType :: AST.Type -> Type
-rTranslateType (AST.TypeIdentifier id, _) = TVar $ idName id
-rTranslateType (AST.TypeVoid, _)          = TVoid
-rTranslateType (AST.TypeBool, _)          = TBool
-rTranslateType (AST.TypeInt, _)           = TInt
-rTranslateType (AST.TypeChar, _)          = TChar
-rTranslateType (AST.TypeList t, _)        = TList $ rTranslateType t
-rTranslateType (AST.TypeTuple t1 t2, _)   = TTuple (rTranslateType t1) (rTranslateType t2)
-rTranslateType (AST.TypePointer t, _)     = TPointer $ rTranslateType t
-
-rTranslateFunType :: AST.FunType -> Type
-rTranslateFunType (AST.FunType args body, _) = TFunction (map rTranslateType args) (rTranslateType body)
+rTranslateType (AST.TypeIdentifier id, _)   = TVar $ idName id
+rTranslateType (AST.TypeVoid, _)            = TVoid
+rTranslateType (AST.TypeBool, _)            = TBool
+rTranslateType (AST.TypeInt, _)             = TInt
+rTranslateType (AST.TypeChar, _)            = TChar
+rTranslateType (AST.TypeList t, _)          = TList $ rTranslateType t
+rTranslateType (AST.TypeTuple t1 t2, _)     = TTuple (rTranslateType t1) (rTranslateType t2)
+rTranslateType (AST.TypePointer t, _)       = TPointer $ rTranslateType t
+rTranslateType (AST.TypeFunction args t, _) = TFunction (map rTranslateType args) (rTranslateType t)
 
 -- |Class to rewrite the AST with type substitutions
 class RewriteAST a where
@@ -1007,9 +1003,6 @@ instance RewriteAST AST.VarDecl where
 instance RewriteAST AST.FunDecl where
     rewrite s (AST.FunDeclTyped i is t ss, p) = (AST.FunDeclTyped (rewrite s i) (rewrite s is) (rewrite s t) (rewrite s ss), p)
     rewrite s (AST.FunDeclUntyped i is ss, p) = (AST.FunDeclUntyped (rewrite s i) (rewrite s is) (rewrite s ss), p)
-
-instance RewriteAST AST.FunType where
-    rewrite s (AST.FunType ts t, p) = (AST.FunType (rewrite s ts) (rewrite s t), p)
 
 instance RewriteAST AST.Statement where
     rewrite s (AST.StmtVarDecl v, p) = (AST.StmtVarDecl (rewrite s v), p)

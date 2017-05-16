@@ -79,7 +79,7 @@ instance (ASTEq VarDecl) where
     astEq (VarDeclUntypedUnitialized i1, _) (VarDeclUntypedUnitialized i2, _) = astEq i1 i2
     astEq _ _ = False
 
-data FunDecl'        = FunDeclTyped Identifier [Identifier] FunType [Statement] -- [Identifier] are the arguments
+data FunDecl'        = FunDeclTyped Identifier [Identifier] Type [Statement] -- [Identifier] are the arguments
                      | FunDeclUntyped Identifier [Identifier] [Statement]
                        deriving (Eq, Show)
 type FunDecl         = (FunDecl', Pos)
@@ -107,21 +107,6 @@ instance (ASTEq FunDecl) where
     astEq (FunDeclUntyped i1 is1 ss1, _) (FunDeclUntyped i2 is2 ss2, _) = astEq i1 i2 && astEq is1 is2 && astEq ss1 ss2
     astEq _ _ = False
 
-data FunType'        = FunType [Type] Type
-                       deriving (Eq, Show)
-type FunType         = (FunType', Pos)
-
-instance PrettyPrint FunType where
-    prettyPrint (f, _) = case f of
-        FunType argTypes returnType -> printArgsTypes argTypes ++ "-> " ++ prettyPrint returnType
-        where
-            printArgsTypes :: [Type] -> String
-            printArgsTypes [] = ""
-            printArgsTypes (arg:args) = prettyPrint arg ++ " " ++ printArgsTypes args
-
-instance (ASTEq FunType) where
-    astEq (FunType ts1 t1, _) (FunType ts2 t2, _) = astEq ts1 ts2 && astEq t1 t2
-
 data Type'           = TypeVoid
                      | TypeTuple Type Type
                      | TypeList Type
@@ -130,6 +115,7 @@ data Type'           = TypeVoid
                      | TypeChar
                      | TypeIdentifier Identifier
                      | TypePointer Type
+                     | TypeFunction [Type] Type
                        deriving (Eq, Show)
 type Type            = (Type', Pos)
 
@@ -142,6 +128,11 @@ instance PrettyPrint Type where
     prettyPrint (TypeChar, _) = "Char"
     prettyPrint (TypeIdentifier i, _) = prettyPrint i
     prettyPrint (TypePointer t, _) = prettyPrint t ++ "*"
+    prettyPrint (TypeFunction argTypes returnType, _) = printArgsTypes argTypes ++ "-> " ++ prettyPrint returnType
+        where
+            printArgsTypes :: [Type] -> String
+            printArgsTypes [] = ""
+            printArgsTypes (arg:args) = prettyPrint arg ++ " " ++ printArgsTypes args
 
 instance (ASTEq Type) where
     astEq (TypeVoid, _) (TypeVoid, _) = True
@@ -151,6 +142,8 @@ instance (ASTEq Type) where
     astEq (TypeBool, _) (TypeBool, _) = True
     astEq (TypeChar, _) (TypeChar, _) = True
     astEq (TypeIdentifier i1, _) (TypeIdentifier i2, _) = astEq i1 i2
+    astEq (TypePointer t1, _) (TypePointer t2, _) = astEq t1 t2
+    astEq (TypeFunction ts1 t1, _) (TypeFunction ts2 t2, _) = astEq ts1 ts2 && astEq t1 t2
     astEq _ _ = False
 
 data Statement'      = StmtVarDecl VarDecl

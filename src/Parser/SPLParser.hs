@@ -143,12 +143,12 @@ pFunArgsDef = (
             pIdentifier
 
 -- TODO: set position to the position of the first type, if given, instead of the position of <-
-pFunType :: Parser AST.FunType
+pFunType :: Parser AST.Type
 pFunType = (do
         types <- many pType <?> "argument types"
         TP _ p <- tok (TPunctuator PMapTo) <?> "a 'maps to' symbol (->)"
         returnType <- pType <?> "a return type"
-        return (AST.FunType types returnType, p)
+        return (AST.TypeFunction types returnType, p)
     ) <?> "a function type"
 
 pType :: Parser AST.Type

@@ -90,8 +90,10 @@ typedASTToCtx (decl:decls) =
             (AST.DeclI _, _) -> schemes
             (AST.DeclV (AST.VarDeclTyped t i _, _), _) ->
                 Map.insert (Checker.idName i) (Checker.generalize Checker.emptyScopedCtx (Checker.rTranslateType t)) schemes
+            (AST.DeclV (AST.VarDeclTypedUnitialized t i, _), _) ->
+                Map.insert (Checker.idName i) (Checker.generalize Checker.emptyScopedCtx (Checker.rTranslateType t)) schemes
             (AST.DeclF (AST.FunDeclTyped i _ t _, _), _) ->
-                Map.insert (Checker.idName i) (Checker.generalize Checker.emptyScopedCtx (Checker.rTranslateFunType t)) schemes
+                Map.insert (Checker.idName i) (Checker.generalize Checker.emptyScopedCtx (Checker.rTranslateType t)) schemes
 
 checkWithIncludes :: AST.SPL -> IO [(AST.SPL, Checker.ASTAnnotation)]
 checkWithIncludes spl = do
