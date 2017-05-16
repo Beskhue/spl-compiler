@@ -61,16 +61,22 @@ instance (ASTEq IncludeDecl) where
 
 data VarDecl'        = VarDeclTyped Type Identifier Expression
                      | VarDeclUntyped Identifier Expression
+                     | VarDeclTypedUnitialized Type Identifier
+                     | VarDeclUntypedUnitialized Identifier
                        deriving (Eq, Show)
 type VarDecl         = (VarDecl', Pos)
 
 instance PrettyPrint VarDecl where
     prettyPrint (VarDeclTyped t i e, _) = prettyPrint t ++ " " ++ prettyPrint i ++ " = " ++ prettyPrint e ++ ";"
     prettyPrint (VarDeclUntyped i e, _) = "var " ++ prettyPrint i ++ " = " ++ prettyPrint e ++ ";"
+    prettyPrint (VarDeclTypedUnitialized t i, _) = prettyPrint t ++ " " ++ prettyPrint i ++ ";"
+    prettyPrint (VarDeclUntypedUnitialized i, _) = "var " ++ prettyPrint i ++ ";"
 
 instance (ASTEq VarDecl) where
     astEq (VarDeclTyped t1 i1 e1, _) (VarDeclTyped t2 i2 e2, _) = astEq t1 t2 && astEq i1 i2 && astEq e1 e2
     astEq (VarDeclUntyped i1 e1, _) (VarDeclUntyped i2 e2, _) = astEq i1 i2 && astEq e1 e2
+    astEq (VarDeclTypedUnitialized t1 i1, _) (VarDeclTypedUnitialized t2 i2, _) = astEq t1 t2 && astEq i1 i2
+    astEq (VarDeclUntypedUnitialized i1, _) (VarDeclUntypedUnitialized i2, _) = astEq i1 i2
     astEq _ _ = False
 
 data FunDecl'        = FunDeclTyped Identifier [Identifier] FunType [Statement] -- [Identifier] are the arguments

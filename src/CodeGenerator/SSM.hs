@@ -330,7 +330,9 @@ genSPL decls = do
     let varDecls = filter (\decl -> case decl of
             (AST.DeclV _, _) -> True
             _ -> False) decls
-    let varDeclNames = map (\decl -> case decl of (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> Checker.idName i) varDecls
+    let varDeclNames = map (\decl -> case decl of
+            (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> Checker.idName i
+            (AST.DeclV (AST.VarDeclTypedUnitialized _ i, _), _) -> Checker.idName i) varDecls
     scopes <- ask
     let scopes' = Stack.stackPush scopes (Map.fromList [(varDeclName, idx) | (idx, varDeclName) <- zip [0..] varDeclNames])
     local (const scopes') (liftM id (mapM genDecl varDecls))
@@ -358,6 +360,7 @@ genDecl (AST.DeclF funDecl, _) = genFunDecl funDecl
 
 genVarDecl :: AST.VarDecl -> Gen ()
 genVarDecl (AST.VarDeclTyped _ i e, _) = genExpression e
+genVarDecl (AST.VarDeclTypedUnitialized _ i, _) = return ()
 
 genFunDecl :: AST.FunDecl -> Gen ()
 genFunDecl (AST.FunDeclTyped i args _ stmts, _) = do
@@ -387,6 +390,14 @@ genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e, _), _) stmts = do
     offset <- getLocalAddressOffset
     scopes <- ask
     push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + 1)) (Just $ "declare local " ++ Checker.idName i)
+    case Stack.stackPop scopes of
+        Just (scopes', scope) -> do
+            let scope' = Map.insert (Checker.idName i) (offset + 1) scope
+            incrementLocalAddressOffset
+            local (const $ Stack.stackPush scopes' scope') (genStatements stmts)
+genStatement (AST.StmtVarDecl (AST.VarDeclTypedUnitialized _ i, _), _) stmts = do
+    offset <- getLocalAddressOffset
+    scopes <- ask
     case Stack.stackPop scopes of
         Just (scopes', scope) -> do
             let scope' = Map.insert (Checker.idName i) (offset + 1) scope

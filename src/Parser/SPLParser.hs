@@ -79,17 +79,29 @@ pVarDecl = (do
             TKeyword KVar -> do
                 TP _ p <- tok (TKeyword KVar)
                 identifier <- pIdentifier
-                tok (TOperator OAssignment)
-                expression <- pExpression
-                tok (TPunctuator PSeparator)
-                return (AST.VarDeclUntyped identifier expression, p)
+                t' <- pPeek
+                case t' of
+                    TOperator OAssignment -> do
+                        tok (TOperator OAssignment)
+                        expression <- pExpression
+                        tok (TPunctuator PSeparator)
+                        return (AST.VarDeclUntyped identifier expression, p)
+                    _ -> do
+                        tok (TPunctuator PSeparator)
+                        return (AST.VarDeclUntypedUnitialized identifier, p)
             _ -> do
-                 (type', p) <- pType
-                 identifier <- pIdentifier
-                 tok (TOperator OAssignment)
-                 expression <- pExpression
-                 tok (TPunctuator PSeparator)
-                 return (AST.VarDeclTyped (type', p) identifier expression, p)
+                (type', p) <- pType
+                identifier <- pIdentifier
+                t' <- pPeek
+                case t' of
+                    TOperator OAssignment -> do
+                        tok (TOperator OAssignment)
+                        expression <- pExpression
+                        tok (TPunctuator PSeparator)
+                        return (AST.VarDeclTyped (type', p) identifier expression, p)
+                    _ -> do
+                        tok (TPunctuator PSeparator)
+                        return (AST.VarDeclTypedUnitialized (type', p) identifier, p)
     ) <?> "a variable declaration"
 
 pFunDecl :: Parser AST.FunDecl

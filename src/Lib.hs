@@ -98,10 +98,12 @@ checkWithIncludes spl = do
     r <- checkWithIncludes' spl [] [] [] Map.empty
     return $ fst r
     where
-        checkWithIncludes' :: AST.SPL ->
+        checkWithIncludes' ::
+            AST.SPL ->
             AST.SPL ->
             [(AST.SPL, Checker.ASTAnnotation)] ->
-            [String] -> Map.Map String Checker.Scheme ->
+            [String] ->
+            Map.Map String Checker.Scheme ->
             IO ([(AST.SPL, Checker.ASTAnnotation)], Map.Map String Checker.Scheme)
         checkWithIncludes' (d@(AST.DeclI (AST.IncludeDecl s, _), _):decls) includeDecls spls included accum =
             if s `elem` included

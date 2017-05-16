@@ -573,6 +573,8 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
             case decl of
                 (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
                 (AST.DeclV (AST.VarDeclUntyped i _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
+                (AST.DeclV (AST.VarDeclTypedUnitialized _ i, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
+                (AST.DeclV (AST.VarDeclUntypedUnitialized i, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
                 (AST.DeclF (AST.FunDeclTyped i _ _ _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
                 (AST.DeclF (AST.FunDeclUntyped i _ _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
         addGlobalToCtx :: ScopedTypeCtx -> AST.Decl -> Type -> TInf ScopedTypeCtx
@@ -580,6 +582,8 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
             case decl of
                 (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> return $ add ctx (idName i) (Scheme [] t)
                 (AST.DeclV (AST.VarDeclUntyped i _, _), _) -> return $ add ctx (idName i) (Scheme [] t)
+                (AST.DeclV (AST.VarDeclTypedUnitialized _ i, _), _) -> return $ add ctx (idName i) (Scheme [] t)
+                (AST.DeclV (AST.VarDeclUntypedUnitialized i, _), _) -> return $ add ctx (idName i) (Scheme [] t)
                 (AST.DeclF (AST.FunDeclTyped i _ _ _, _), _) -> return $ add ctx (idName i) (generalize ctx t)
                 (AST.DeclF (AST.FunDeclUntyped i _ _, _), _) -> return $ add ctx (idName i) (generalize ctx t)
         insertIntoSPL :: AST.SPL -> Int -> AST.Decl -> AST.SPL
@@ -655,6 +659,20 @@ tInfVarDecl t decl =
                     ++ ". Expected type: " ++ AST.prettyPrint (translateType p annotatedT)
                     ++ ". Inferred type: " ++ AST.prettyPrint (translateType p t') ++ "."
         (AST.VarDeclUntyped identifier expr, p) -> tInfVarDecl' p t identifier expr
+        (AST.VarDeclTypedUnitialized annotatedType identifier, p) -> do
+            let annotatedT = rTranslateType annotatedType
+            (ast, str) <- tInfVarDeclUntyped' p t identifier
+            t' <- substitute t
+            s' <- mgu (Just p) annotatedT t' `catchError` (\_ ->
+                throwError $ "Could not unify types"
+                    ++ ". Expected type: " ++ AST.prettyPrint (translateType p annotatedT)
+                    ++ ". Inferred type: " ++ AST.prettyPrint (translateType p t') ++ ".")
+            if apply s' annotatedT == applyOnlyRename s' annotatedT
+                then return (rewrite s' ast, str)
+                else throwError $ "Expected type is more general than the inferred type"
+                    ++ ". Expected type: " ++ AST.prettyPrint (translateType p annotatedT)
+                    ++ ". Inferred type: " ++ AST.prettyPrint (translateType p t') ++ "."
+        (AST.VarDeclUntypedUnitialized identifier, p) -> tInfVarDeclUntyped' p t identifier
     where
         tInfVarDecl' :: Pos.Pos -> Type -> AST.Identifier -> AST.Expression -> TInf (AST.VarDecl, String)
         tInfVarDecl' p t identifier expr = do
@@ -662,6 +680,10 @@ tInfVarDecl t decl =
             t' <- substitute t
             let t'' = translateType p t'
             return ((AST.VarDeclTyped t'' identifier expr, p), idName identifier)
+        tInfVarDeclUntyped' :: Pos.Pos -> Type -> AST.Identifier -> TInf (AST.VarDecl, String)
+        tInfVarDeclUntyped' p t identifier = do
+            let t' = translateType p t
+            return ((AST.VarDeclTypedUnitialized t' identifier, p), idName identifier)
 
 tInfFunDecl :: Type -> AST.FunDecl -> TInf (AST.FunDecl, String)
 tInfFunDecl t decl =
@@ -831,6 +853,8 @@ instance DeclIdentifier AST.Decl where
 instance DeclIdentifier AST.VarDecl where
     declIdentifier (AST.VarDeclTyped _ i _, _) = idName i
     declIdentifier (AST.VarDeclUntyped i _, _) = idName i
+    declIdentifier (AST.VarDeclTypedUnitialized _ i, _) = idName i
+    declIdentifier (AST.VarDeclUntypedUnitialized i, _) = idName i
 
 instance DeclIdentifier AST.FunDecl where
     declIdentifier (AST.FunDeclTyped i _ _ _, _) = idName i
@@ -857,6 +881,8 @@ instance Dependencies AST.VarDecl where
     dependencies globalDefs (AST.VarDeclUntyped i e, _) =
         let (globalDefs', deps) = dependencies globalDefs e in
           ([g | g <- globalDefs, g /= idName i], deps)
+    dependencies globalDefs (AST.VarDeclTypedUnitialized _ i, _) = ([g | g <- globalDefs, g /= idName i], [])
+    dependencies globalDefs (AST.VarDeclUntypedUnitialized i, _) = ([g | g <- globalDefs, g /= idName i], [])
 
 instance Dependencies AST.FunDecl where
     dependencies globalDefs (AST.FunDeclTyped i is _ ss, _) =
@@ -964,6 +990,8 @@ instance RewriteAST AST.Decl where
 instance RewriteAST AST.VarDecl where
     rewrite s (AST.VarDeclTyped t i e, p) = (AST.VarDeclTyped (rewrite s t) (rewrite s i) (rewrite s e), p)
     rewrite s (AST.VarDeclUntyped i e, p) = (AST.VarDeclUntyped (rewrite s i) (rewrite s e), p)
+    rewrite s (AST.VarDeclTypedUnitialized t i, p) = (AST.VarDeclTypedUnitialized (rewrite s t) (rewrite s i), p)
+    rewrite s (AST.VarDeclUntypedUnitialized i, p) = (AST.VarDeclUntypedUnitialized (rewrite s i), p)
 
 instance RewriteAST AST.FunDecl where
     rewrite s (AST.FunDeclTyped i is t ss, p) = (AST.FunDeclTyped (rewrite s i) (rewrite s is) (rewrite s t) (rewrite s ss), p)
