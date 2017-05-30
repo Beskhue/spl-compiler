@@ -5,7 +5,8 @@ import System.IO
 import System.IO.Error
 import Text.Parsec.Prim
 import Data.Token
-import Data.AST as AST
+import qualified Data.AST as AST
+import qualified Data.Type as Type
 import qualified Lexer.Lexer as Lexer
 import qualified Parser.SPLParser as SPLParser
 import qualified TypeSystem.Checker as Checker
@@ -82,7 +83,7 @@ eitherToRight (Right b) = return b
 --------------------------------------------------------------------------------
 -- Linking
 
-typedASTToCtx :: AST.SPL -> Map.Map String Checker.Scheme
+typedASTToCtx :: AST.SPL -> Map.Map String Type.Scheme
 typedASTToCtx [] = Map.empty
 typedASTToCtx (decl:decls) =
     let schemes = typedASTToCtx decls in
@@ -105,8 +106,8 @@ checkWithIncludes spl = do
             AST.SPL ->
             [(AST.SPL, Checker.ASTAnnotation)] ->
             [String] ->
-            Map.Map String Checker.Scheme ->
-            IO ([(AST.SPL, Checker.ASTAnnotation)], Map.Map String Checker.Scheme)
+            Map.Map String Type.Scheme ->
+            IO ([(AST.SPL, Checker.ASTAnnotation)], Map.Map String Type.Scheme)
         checkWithIncludes' (d@(AST.DeclI (AST.IncludeDecl s, _), _):decls) includeDecls spls included accum =
             if s `elem` included
                 then checkWithIncludes' decls (d:includeDecls) spls included accum

@@ -34,6 +34,7 @@ import qualified TypeSystem.Checker as Checker
 
 import qualified Data.Pos as Pos
 import qualified Data.AST as AST
+import Data.Type as Type
 
 --------------------------------------------------------------------------------
 
@@ -473,7 +474,8 @@ genExpression (AST.ExprFunCall i args, p) = do
     liftM id (mapM genExpression (reverse args))
     case Checker.idName i of
         "print" -> do
-            case Map.lookup p a of Just (Checker.TFunction [t] _) -> genPrint t
+            --throwError $ (show p) ++ (show $ Map.lookup p a)
+            case Map.lookup p a of Just (Type.TFunction [t] _) -> genPrint t
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
         "isEmpty" -> do
             -- Get next address of the list, if it is -1 the list is empty
@@ -489,8 +491,8 @@ genExpression (AST.ExprFunCall i args, p) = do
             push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
 
     where
-        genPrint :: Checker.Type -> Gen ()
-        genPrint Checker.TBool = do
+        genPrint :: Type.Type -> Gen ()
+        genPrint Type.TBool = do
             push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ANumber 18) (Just "start print bool")
             genPrintChar 'T'
             genPrintChar 'r'
@@ -502,16 +504,16 @@ genExpression (AST.ExprFunCall i args, p) = do
             genPrintChar 'l'
             genPrintChar 's'
             genPrintChar 'e'
-        genPrint Checker.TInt = push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
-        genPrint Checker.TChar = push $ SSMLine Nothing (Just $ IIO IOPrintChar) Nothing
-        genPrint (Checker.TTuple t1 t2) = do
+        genPrint Type.TInt = push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
+        genPrint Type.TChar = push $ SSMLine Nothing (Just $ IIO IOPrintChar) Nothing
+        genPrint (Type.TTuple t1 t2) = do
             genPrintChar '('
             push $ SSMLine Nothing (Just $ ILoad $ LHeapMultiple (ANumber 0) (ANumber 2)) Nothing
             genPrint t1
             genPrintChar ','
             genPrint t2
             genPrintChar ')'
-        genPrint (Checker.TList a) = do
+        genPrint (Type.TList a) = do
             lblStart <- getFreshLabel
             lblCleanUp <- getFreshLabel
             genPrintChar '['
@@ -539,8 +541,8 @@ genExpression (AST.ExprFunCall i args, p) = do
             -- Clean up
             push $ SSMLine (Just lblCleanUp) (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
             genPrintChar ']'
-        genPrint (Checker.TPointer _) = push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
-        genPrint (Checker.TVar _) = return ()
+        genPrint (Type.TPointer _) = push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
+        genPrint (Type.TVar _) = return ()
 
 genExpression (AST.ExprConstant c, _) = genConstant c
 genExpression (AST.ExprTuple e1 e2, _) = do
@@ -620,7 +622,7 @@ genUnaryOp (AST.UnaryOpSubtr, _) = push $ SSMLine Nothing (Just $ ICompute ONeg)
 genUnaryOp (AST.UnaryOpCast _, _) = return ()
 genUnaryOp (AST.UnaryOpDereference, _) = push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber 0) Nothing
 
-genBinaryOp :: AST.BinaryOperator -> Checker.Type -> Checker.Type -> Gen ()
+genBinaryOp :: AST.BinaryOperator -> Type.Type -> Type.Type -> Gen ()
 genBinaryOp (AST.BinaryOpOr, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OOr) Nothing
 genBinaryOp (AST.BinaryOpBitwiseOr, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OOr) Nothing
 genBinaryOp (AST.BinaryOpAnd, _) _ _ = push $ SSMLine Nothing (Just $ ICompute OAnd) Nothing

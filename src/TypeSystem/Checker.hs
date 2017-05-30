@@ -34,6 +34,7 @@ import Control.Monad.State
 
 import qualified Data.Pos as Pos
 import qualified Data.AST as AST
+import Data.Type
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -56,22 +57,6 @@ typeInferenceExpr tInf' expr = res
         (res, _) = runTInf $ tInf' expr
 
 ------------------------------------------------------------------------------------------------------------------------
-
--- |The possible types
-data Type = TVar String
-          | TBool
-          | TInt
-          | TChar
-          | TList Type
-          | TTuple Type Type
-          | TFunction [Type] Type
-          | TPointer Type
-          | TVoid
-            deriving (Show, Eq, Ord)
-
--- |A type scheme (polytype): a type with a list of bound type variables (the type variables not bound are still free)
-data Scheme = Scheme [String] Type
-              deriving (Show)
 
 ------------------------------------------------------------------------------------------------------------------------
 
