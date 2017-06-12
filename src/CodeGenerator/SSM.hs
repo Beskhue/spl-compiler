@@ -254,22 +254,16 @@ emptyVariableScopes = Stack.stackNew
 --------------------------------------------------------------------------------
 
 data GenState = GenState { ssm :: SSM,
-                           astAnnotation :: Checker.ASTAnnotation,
                            labelSupply :: Int,
                            localAddressOffset :: AddressOffset}
                     deriving (Show)
 
 type Gen a = ExceptT String (ReaderT VariableScopes (State GenState)) a
 
-runGen :: Gen a -> Checker.ASTAnnotation -> (Either String a, GenState)
-runGen g astAnnotation = runState (runReaderT (runExceptT g) emptyVariableScopes) initGenState
+runGen :: Gen a -> (Either String a, GenState)
+runGen g = runState (runReaderT (runExceptT g) emptyVariableScopes) initGenState
     where
-        initGenState = GenState {ssm = [], astAnnotation = astAnnotation, labelSupply = 0, localAddressOffset = 0}
-
-getASTAnnotation :: Gen Checker.ASTAnnotation
-getASTAnnotation = do
-    st <- get
-    return $ astAnnotation st
+        initGenState = GenState {ssm = [], labelSupply = 0, localAddressOffset = 0}
 
 getFreshLabel :: Gen String
 getFreshLabel = do
@@ -312,14 +306,14 @@ resetLocalAddressOffset = do
 
 --------------------------------------------------------------------------------
 
-gen :: Checker.ASTAnnotation -> AST.SPL -> Either String SSM
-gen annotation ast  = res
+gen :: AST.SPL -> Either String SSM
+gen ast  = res
     where
-        (res, _) = runGen (genSPL ast) annotation
+        (res, _) = runGen $ genSPL ast
 
-genDet :: Checker.ASTAnnotation -> AST.SPL -> SSM
-genDet annotation spl =
-    case gen annotation spl of
+genDet :: AST.SPL -> SSM
+genDet spl =
+    case gen spl of
         Left err -> Trace.trace (show err) undefined
         Right ssm -> ssm
 
@@ -469,13 +463,12 @@ genExpression (AST.ExprIdentifier i, p) = do
 genExpression (AST.ExprField e f, _) = do
     genExpression e
     genFields f
-genExpression (AST.ExprFunCall i args, p) = do
-    a <- getASTAnnotation
+genExpression (AST.ExprFunCall i@(_,m) args, _) = do
     liftM id (mapM genExpression (reverse args))
     case Checker.idName i of
         "print" -> do
-            --throwError $ (show p) ++ (show $ Map.lookup p a)
-            case Map.lookup p a of Just (Type.TFunction [t] _) -> genPrint t
+            -- throwError $ (show m)
+            case AST.metaType m of Just (Type.TFunction [t] _) -> genPrint t
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
         "isEmpty" -> do
             -- Get next address of the list, if it is -1 the list is empty
@@ -553,15 +546,15 @@ genExpression (AST.ExprUnaryOp op e, _) = do
     case op of
         (AST.UnaryOpReference, _) -> genAddressOfExpression e
         _ -> genExpression e >> genUnaryOp op
-genExpression (AST.ExprBinaryOp op e1@(_, p1) e2@(_, p2), _) = do
-    a <- getASTAnnotation
-    case Map.lookup p1 a of
+genExpression (AST.ExprBinaryOp op e1@(_, m1) e2@(_, m2), _) = do
+    case AST.metaType m1 of
         Just t1 ->
-            case Map.lookup p2 a of
+            case AST.metaType m2 of
                 Just t2 ->  do
                     genExpression e1
                     genExpression e2
                     genBinaryOp op t1 t2
+        Nothing -> throwError $ show m1 ++ show m2
 
 genFields :: [AST.Field] -> Gen ()
 genFields fields = liftM id (mapM genField fields) >> return ()

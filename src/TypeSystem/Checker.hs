@@ -38,12 +38,12 @@ import Data.Type
 
 ------------------------------------------------------------------------------------------------------------------------
 
-check :: Bool -> TypeCtx -> AST.SPL -> Either TInfError (AST.SPL, ASTAnnotation)
+check :: Bool -> TypeCtx -> AST.SPL -> Either TInfError AST.SPL
 check preserveDeclOrder includedCtx spl = res
     where
         (res, _) = runTInf $ tInfSPL preserveDeclOrder includedCtx spl
 
-checkDet :: Bool -> TypeCtx -> AST.SPL -> (AST.SPL, ASTAnnotation)
+checkDet :: Bool -> TypeCtx -> AST.SPL -> AST.SPL
 checkDet preserveDeclOrder includedCtx spl =
     case check preserveDeclOrder includedCtx spl of
         Left err -> Trace.trace (show err) undefined
@@ -239,29 +239,28 @@ instance Show TInfError where
 
 instance Show TInfError' where
     show (TInfErrorUnify t1 t2) = "Types do not unify: "
-        ++ AST.prettyPrint (translateType Pos.emptyPos t1)
+        ++ AST.prettyPrint (translateType AST.emptyMeta t1)
         ++ " and "
-        ++ AST.prettyPrint (translateType Pos.emptyPos t2)
+        ++ AST.prettyPrint (translateType AST.emptyMeta t2)
     show (TInfErrorOccursCheck s t) = "Free type variable "
         ++ s
         ++ "occurs in "
-        ++ AST.prettyPrint (translateType Pos.emptyPos t)
+        ++ AST.prettyPrint (translateType AST.emptyMeta t)
     show (TInfErrorExpectedTypeUnify t1 t2) = "Given type and inferred type are not the same. Given: "
-        ++ AST.prettyPrint (translateType Pos.emptyPos t1)
+        ++ AST.prettyPrint (translateType AST.emptyMeta t1)
         ++ ". Inferred: "
-        ++ AST.prettyPrint (translateType Pos.emptyPos t2)
+        ++ AST.prettyPrint (translateType AST.emptyMeta t2)
     show (TInfErrorExpectedTypeTooGeneral t1 t2) = "Given type is too general. Given: "
-        ++ AST.prettyPrint (translateType Pos.emptyPos t1)
+        ++ AST.prettyPrint (translateType AST.emptyMeta t1)
         ++ ". Inferred: "
-        ++ AST.prettyPrint (translateType Pos.emptyPos t2)
+        ++ AST.prettyPrint (translateType AST.emptyMeta t2)
     show (TInfErrorUnboundVariable s) = "Undefined variable: " ++ s
     show (TInfErrorVariableMultiplyDefined s) = "Variable multiply defined in scope: " ++ s
     show TInfErrorPersistentValueRequired = "Persistent value required for reference (&) operand"
 
 -- |The type inference state consists of the fresh type name generator state and the current type substitution
 data TInfState = TInfState { tInfSupply :: Int,
-                             tInfSubstitution :: Substitution,
-                             astAnnotation :: ASTAnnotation}
+                             tInfSubstitution :: Substitution}
                  deriving (Show)
 
 type TInf a = ExceptT TInfError (ReaderT ScopedTypeCtx (State TInfState)) a
@@ -274,8 +273,7 @@ runTInf t = runState (runReaderT (runExceptT t) initTInfCtx) initTInfState
     where
         initTInfCtx = emptyScopedCtx
         initTInfState = TInfState { tInfSupply = 0,
-                                    tInfSubstitution = Map.empty,
-                                    astAnnotation = Map.empty}
+                                    tInfSubstitution = Map.empty}
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -305,11 +303,6 @@ instantiate (Scheme vars t) = do
 
 ------------------------------------------------------------------------------------------------------------------------
 
-annotate :: Pos.Pos -> Type -> TInf ()
-annotate p t = do
-    s <- get
-    put s {astAnnotation = Map.insert p t (astAnnotation s) }
-
 -- |Bind a type variable to a type, but don't bind to itself, and make sure the free type variable occurs
 varBind :: Pos.Pos -> String -> Type -> TInf Substitution
 varBind p u t
@@ -322,14 +315,17 @@ varBind p u t
         return s
 
 -- |Unify two types (using the most general unifier)
-mgu :: Pos.Pos -> Type -> Type -> TInf Substitution
-mgu p t1 t2 = do
+mgu :: AST.Meta -> Type -> Type -> TInf Substitution
+mgu m t1 t2 = do
     t1' <- substitute t1
     t2' <- substitute t2
-    s <- mgu' p t1' t2'
+    s <- mgu' (AST.metaPos m) t1' t2'
     t <- substitute t1
-    annotate p t
-    return s
+    case AST.metaType m of
+        Just t' -> do
+            mgu' (AST.metaPos m) t' t
+            return s
+        _ -> return s
     where
     mgu' :: Pos.Pos -> Type -> Type -> TInf Substitution
     mgu' p (TVar u) t                 = varBind p u t
@@ -350,6 +346,12 @@ mgu p t1 t2 = do
     mgu' p (TPointer t) (TPointer t') = mgu' p t t'
     mgu' p TVoid TVoid                = return nullSubstitution
     mgu' p t1 t2                      = throwError $ TInfError (TInfErrorUnify t1 t2) p
+
+metaMGU :: AST.Meta -> Type -> TInf Substitution
+metaMGU m t2 =
+    case AST.metaType m of
+        Just t1 -> mgu m t1 t2
+        _ -> return nullSubstitution
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -391,16 +393,16 @@ tInfVarName p varName = do
 
 -- |Perform type inference on an AST identifier
 tInfId :: AST.Identifier -> TInf Type
-tInfId i@(_, p) = tInfVarName p (idName i)
+tInfId i@(_, m) = tInfVarName (AST.metaPos m) (idName i)
 
 -- |Perform type inference on an AST constant
 tInfConst :: Type -> AST.Constant -> TInf ()
-tInfConst t (AST.ConstBool _, p) = void $ mgu p t TBool
-tInfConst t (AST.ConstInt _, p) = void $ mgu p t TInt
-tInfConst t (AST.ConstChar _, p) = void $ mgu p t TChar
-tInfConst t (AST.ConstEmptyList, p) = do
+tInfConst t (AST.ConstBool _, m) = void $ mgu m t TBool
+tInfConst t (AST.ConstInt _, m) = void $ mgu m t TInt
+tInfConst t (AST.ConstChar _, m) = void $ mgu m t TChar
+tInfConst t (AST.ConstEmptyList, m) = do
     tVar <- newTypeVar "a"
-    void $ mgu p t (TList tVar)
+    void $ mgu m t (TList tVar)
 
 
 tInfExprTyped :: AST.Expression -> TInf Type
@@ -411,56 +413,56 @@ tInfExprTyped e = do
 
 -- |Perform type inference on an AST expression
 tInfExpr :: Type -> AST.Expression -> TInf ()
-tInfExpr t (AST.ExprIdentifier id, p) = do
+tInfExpr t (AST.ExprIdentifier id, m) = do
     t' <- tInfId id
-    void $ mgu p t t'
+    void $ mgu m t t'
 tInfExpr t (AST.ExprField e fields, _) = do
     t' <- newTypeVar "fld"
     tInfExpr t' e
     tTraverseFields Nothing t t' fields
-tInfExpr t (AST.ExprFunCall id args, p) = do
+tInfExpr t (AST.ExprFunCall id args, m) = do
     t1 <- tInfId id
     ts <- mapM (const $ newTypeVar "arg") args
-    mgu p (TFunction ts t) t1
+    mgu m (TFunction ts t) t1
     tInfExprs ts args
 tInfExpr t (AST.ExprConstant const, _) = tInfConst t const
-tInfExpr t (AST.ExprTuple e1 e2, p) = do
+tInfExpr t (AST.ExprTuple e1 e2, m) = do
     t1 <- newTypeVar "tuple"
     t2 <- newTypeVar "tuple"
     tInfExpr t1 e1
     tInfExpr t2 e2
-    void $ mgu p t (TTuple t1 t2)
-tInfExpr t (AST.ExprUnaryOp op e, p) = do
+    void $ mgu m t (TTuple t1 t2)
+tInfExpr t (AST.ExprUnaryOp op e, m) = do
     tInfUnaryOp t op e
     t' <- substitute t
-    annotate p t'
-tInfExpr t (AST.ExprBinaryOp op e1 e2, p) = do
+    void $ metaMGU m t'
+tInfExpr t (AST.ExprBinaryOp op e1 e2, m) = do
     tInfBinaryOp t op e1 e2
     t' <- substitute t
-    annotate p t'
+    void $ metaMGU m t'
 
-tTraverseFields :: (Maybe Pos.Pos) -> Type -> Type -> [AST.Field] -> TInf ()
-tTraverseFields (Just p) t t' [] = void $ mgu p t t'
+tTraverseFields :: (Maybe AST.Meta) -> Type -> Type -> [AST.Field] -> TInf ()
+tTraverseFields (Just m) t t' [] = void $ mgu m t t'
 tTraverseFields _ t t' (field:fields) =
     case field of
-        (AST.FieldHd, p) -> do
+        (AST.FieldHd, m) -> do
             tVar <- newTypeVar "fld"
-            s <- mgu p t' (TList tVar)
-            tTraverseFields (Just p) t (apply s tVar) fields
-        (AST.FieldTl, p) -> do
+            s <- mgu m t' (TList tVar)
+            tTraverseFields (Just m) t (apply s tVar) fields
+        (AST.FieldTl, m) -> do
             tVar <- newTypeVar "fld"
-            s <- mgu p t' (TList tVar)
-            tTraverseFields (Just p) t (apply s (TList tVar)) fields
-        (AST.FieldFst, p) -> do
+            s <- mgu m t' (TList tVar)
+            tTraverseFields (Just m) t (apply s (TList tVar)) fields
+        (AST.FieldFst, m) -> do
             tVar1 <- newTypeVar "fld"
             tVar2 <- newTypeVar "fld"
-            s <- mgu p t' (TTuple tVar1 tVar2)
-            tTraverseFields (Just p) t (apply s tVar1) fields
-        (AST.FieldSnd, p) -> do
+            s <- mgu m t' (TTuple tVar1 tVar2)
+            tTraverseFields (Just m) t (apply s tVar1) fields
+        (AST.FieldSnd, m) -> do
             tVar1 <- newTypeVar "fld"
             tVar2 <- newTypeVar "fld"
-            s <- mgu p t' (TTuple tVar1 tVar2)
-            tTraverseFields (Just p) t (apply s tVar2) fields
+            s <- mgu m t' (TTuple tVar1 tVar2)
+            tTraverseFields (Just m) t (apply s tVar2) fields
 
 -- |Perform type inference on a list of AST expressions
 tInfExprs :: [Type] -> [AST.Expression] -> TInf ()
@@ -470,78 +472,78 @@ tInfExprs (t:ts) (expr:exprs) = do
     tInfExprs ts exprs
 
 tInfUnaryOp :: Type -> AST.UnaryOperator -> AST.Expression -> TInf ()
-tInfUnaryOp t (AST.UnaryOpNeg, p) e = do
+tInfUnaryOp t (AST.UnaryOpNeg, m) e = do
     tInfExpr TBool e
-    void $ mgu p t TBool
-tInfUnaryOp t (AST.UnaryOpBitwiseNot, p) e = do
+    void $ mgu m t TBool
+tInfUnaryOp t (AST.UnaryOpBitwiseNot, m) e = do
     tInfExpr TInt e
-    void $ mgu p t TInt
-tInfUnaryOp t (AST.UnaryOpSubtr, p) e = do
+    void $ mgu m t TInt
+tInfUnaryOp t (AST.UnaryOpSubtr, m) e = do
     tInfExpr TInt e
-    void $ mgu p t TInt
-tInfUnaryOp t (AST.UnaryOpCast castToType, p) e = do
+    void $ mgu m t TInt
+tInfUnaryOp t (AST.UnaryOpCast castToType, m) e = do
     t' <- newTypeVar "var"
     tInfExpr t' e
-    void $ mgu p t (rTranslateType castToType)
-tInfUnaryOp t (AST.UnaryOpReference, p) e =
+    void $ mgu m t (rTranslateType castToType)
+tInfUnaryOp t (AST.UnaryOpReference, m) e =
     case valueType e of
         PersistentValue -> do
             t' <- newTypeVar "ref"
             tInfExpr t' e
-            void $ mgu p t (TPointer t')
-        _ -> throwError $ TInfError TInfErrorPersistentValueRequired p
-tInfUnaryOp t (AST.UnaryOpDereference, p) e = tInfExpr (TPointer t) e
+            void $ mgu m t (TPointer t')
+        _ -> throwError $ TInfError TInfErrorPersistentValueRequired (AST.metaPos m)
+tInfUnaryOp t (AST.UnaryOpDereference, m) e = tInfExpr (TPointer t) e
 
 tInfBinaryOp :: Type -> AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf ()
-tInfBinaryOp t (AST.BinaryOpOr, p) e1 e2 = do
+tInfBinaryOp t (AST.BinaryOpOr, m) e1 e2 = do
     tInfExpr TBool e1
     tInfExpr TBool e2
-    void $ mgu p t TBool
-tInfBinaryOp t (AST.BinaryOpBitwiseOr, p) e1 e2 = do
+    void $ mgu m t TBool
+tInfBinaryOp t (AST.BinaryOpBitwiseOr, m) e1 e2 = do
     tInfExpr TInt e1
     tInfExpr TInt e2
-    void $ mgu p t TInt
-tInfBinaryOp t (AST.BinaryOpAnd, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpOr, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpBitwiseAnd, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpBitwiseOr, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpEq, p) e1 e2 = do
+    void $ mgu m t TInt
+tInfBinaryOp t (AST.BinaryOpAnd, m) e1 e2 = tInfBinaryOp t (AST.BinaryOpOr, m) e1 e2
+tInfBinaryOp t (AST.BinaryOpBitwiseAnd, m) e1 e2 = tInfBinaryOp t (AST.BinaryOpBitwiseOr, m) e1 e2
+tInfBinaryOp t (AST.BinaryOpEq, m) e1 e2 = do
     t' <- newTypeVar "expr"
     tInfExpr t' e1
     tInfExpr t' e2
-    void $ mgu p t TBool
-tInfBinaryOp t (AST.BinaryOpNEq, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpEq, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpLT, p) e1 e2 = do
+    void $ mgu m t TBool
+tInfBinaryOp t (AST.BinaryOpNEq, m) e1 e2 = tInfBinaryOp t (AST.BinaryOpEq, m) e1 e2
+tInfBinaryOp t (AST.BinaryOpLT, m) e1 e2 = do
     tInfExpr TInt e1
     tInfExpr TInt e2
-    void $ mgu p t TBool
-tInfBinaryOp t (AST.BinaryOpGT, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpLT, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpLTE, p) e1 e2= tInfBinaryOp t (AST.BinaryOpLT, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpGTE, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpLT, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpConcat, p) e1 e2 = do
+    void $ mgu m t TBool
+tInfBinaryOp t (AST.BinaryOpGT, m) e1 e2 = tInfBinaryOp t (AST.BinaryOpLT, m) e1 e2
+tInfBinaryOp t (AST.BinaryOpLTE, m) e1 e2= tInfBinaryOp t (AST.BinaryOpLT, m) e1 e2
+tInfBinaryOp t (AST.BinaryOpGTE, m) e1 e2 = tInfBinaryOp t (AST.BinaryOpLT, m) e1 e2
+tInfBinaryOp t (AST.BinaryOpConcat, m) e1 e2 = do
     t' <- newTypeVar "a"
     tInfExpr t' e1
     tInfExpr (TList t') e2
-    void $ mgu p t (TList t')
-tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2 = do
+    void $ mgu m t (TList t')
+tInfBinaryOp t (AST.BinaryOpPlus, m) e1 e2 = do
     tInfExpr TInt e1
     tInfExpr TInt e2
-    void $ mgu p t TInt
-tInfBinaryOp t (AST.BinaryOpSubtr, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpReferencePlus, p) e1 e2 = do
+    void $ mgu m t TInt
+tInfBinaryOp t (AST.BinaryOpSubtr, m) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, m) e1 e2
+tInfBinaryOp t (AST.BinaryOpReferencePlus, m) e1 e2 = do
     t' <- newTypeVar "ref"
     tInfExpr (TPointer t') e1
     tInfExpr TInt e2
-    void $ mgu p t (TPointer t')
-tInfBinaryOp t (AST.BinaryOpReferenceSubtr, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpReferencePlus, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpReferenceReferenceSubtr, p) e1 e2 = do
+    void $ mgu m t (TPointer t')
+tInfBinaryOp t (AST.BinaryOpReferenceSubtr, m) e1 e2 = tInfBinaryOp t (AST.BinaryOpReferencePlus, m) e1 e2
+tInfBinaryOp t (AST.BinaryOpReferenceReferenceSubtr, m) e1 e2 = do
     t' <- newTypeVar "ref"
     tInfExpr (TPointer t') e1
     tInfExpr (TPointer t') e2
-    void $ mgu p t TInt
-tInfBinaryOp t (AST.BinaryOpMult, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpDiv, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpMod, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpBitShiftLeft, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
-tInfBinaryOp t (AST.BinaryOpBitShiftRight, p) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, p) e1 e2
+    void $ mgu m t TInt
+tInfBinaryOp t (AST.BinaryOpMult, m) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, m) e1 e2
+tInfBinaryOp t (AST.BinaryOpDiv, m) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, m) e1 e2
+tInfBinaryOp t (AST.BinaryOpMod, m) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, m) e1 e2
+tInfBinaryOp t (AST.BinaryOpBitShiftLeft, m) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, m) e1 e2
+tInfBinaryOp t (AST.BinaryOpBitShiftRight, m) e1 e2 = tInfBinaryOp t (AST.BinaryOpPlus, m) e1 e2
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -556,7 +558,7 @@ splitDeclsIncludes (decl:decls) =
 
 -- |Perform type inference on the global SPL declarations. Rewrite the AST such that all variables are typed as
 -- completely as possible.
-tInfSPL :: Bool -> TypeCtx -> AST.SPL -> TInf (AST.SPL, ASTAnnotation)
+tInfSPL :: Bool -> TypeCtx -> AST.SPL -> TInf AST.SPL
 tInfSPL preserveDeclOrder includedCtx decls' = do
     let (decls, includes) = splitDeclsIncludes decls'
     ctx <- ask
@@ -577,7 +579,7 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
     spl <- local (const initCtx) (tInfSCCs decls sccDecls)
     s <- substitution
     st <- get
-    return (includes ++ spl, apply s (astAnnotation st))
+    return $ includes ++ spl
     where
         numberAscending :: [[AST.Decl]] -> [[(Int, AST.Decl)]]
         numberAscending = numberAscending' 0
@@ -623,14 +625,14 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
         -- |Perform type inference for declaration within a strongly connected component
         tInfSCC :: [(Int, AST.Decl)] -> TInf [(Int, AST.Decl, Type)]
         tInfSCC [] = return []
-        tInfSCC ((idx, decl@(_,p)):decls) = do
+        tInfSCC ((idx, decl@(_,m)):decls) = do
             -- Infer type of the declaration
             t1 <- newTypeVar "decl"
             (decl', varName) <- tInfDecl t1 decl
 
             -- Get the type scheme of the variable/function we just declared and unify it with the actual type
-            (Scheme _ t1') <- getScheme p varName
-            mgu p t1' t1
+            (Scheme _ t1') <- getScheme (AST.metaPos m) varName
+            mgu m t1' t1
 
             -- Perform type inference for the next declarations
             typedDecls <- tInfSCC decls
@@ -655,64 +657,64 @@ tInfSPLGraph decls =
         map (\decl -> (decl, declIdentifier decl, snd $ dependencies globalVars decl)) decls
 
 tInfDecl :: Type -> AST.Decl -> TInf (AST.Decl, String)
-tInfDecl t (AST.DeclV decl, p) = do
+tInfDecl t (AST.DeclV decl, m) = do
     (decl', varName) <- tInfVarDecl t decl
-    return ((AST.DeclV decl', p), varName)
-tInfDecl t (AST.DeclF decl, p) = do
+    return ((AST.DeclV decl', m), varName)
+tInfDecl t (AST.DeclF decl, m) = do
     (decl', varName) <- tInfFunDecl t decl
-    return ((AST.DeclF decl', p), varName)
+    return ((AST.DeclF decl', m), varName)
 
 tInfVarDecl :: Type -> AST.VarDecl -> TInf (AST.VarDecl, String)
 tInfVarDecl t decl =
     case decl of
-        (AST.VarDeclTyped annotatedType identifier expr, p) -> do
+        (AST.VarDeclTyped annotatedType identifier expr, m) -> do
             let annotatedT = rTranslateType annotatedType
-            (ast, str) <- tInfVarDecl' p t identifier expr
+            (ast, str) <- tInfVarDecl' m t identifier expr
             t' <- substitute t
-            s' <- mgu p annotatedT t' `catchError` (\_ ->
-                throwError $ TInfError (TInfErrorExpectedTypeUnify annotatedT t') p)
+            s' <- mgu m annotatedT t' `catchError` (\_ ->
+                throwError $ TInfError (TInfErrorExpectedTypeUnify annotatedT t') (AST.metaPos m))
             if apply s' annotatedT == applyOnlyRename s' annotatedT
                 then return (rewrite s' ast, str)
-                else throwError $ TInfError (TInfErrorExpectedTypeTooGeneral annotatedT t') p
-        (AST.VarDeclUntyped identifier expr, p) -> tInfVarDecl' p t identifier expr
-        (AST.VarDeclTypedUnitialized annotatedType identifier, p) -> do
+                else throwError $ TInfError (TInfErrorExpectedTypeTooGeneral annotatedT t') (AST.metaPos m)
+        (AST.VarDeclUntyped identifier expr, m) -> tInfVarDecl' m t identifier expr
+        (AST.VarDeclTypedUnitialized annotatedType identifier, m) -> do
             let annotatedT = rTranslateType annotatedType
-            (ast, str) <- tInfVarDeclUntyped' p t identifier
+            (ast, str) <- tInfVarDeclUntyped' m t identifier
             t' <- substitute t
-            s' <- mgu p annotatedT t' `catchError` (\_ ->
-                throwError $ TInfError (TInfErrorExpectedTypeUnify annotatedT t') p)
+            s' <- mgu m annotatedT t' `catchError` (\_ ->
+                throwError $ TInfError (TInfErrorExpectedTypeUnify annotatedT t') (AST.metaPos m))
             if apply s' annotatedT == applyOnlyRename s' annotatedT
                 then return (rewrite s' ast, str)
-                else throwError $ TInfError (TInfErrorExpectedTypeTooGeneral annotatedT t') p
-        (AST.VarDeclUntypedUnitialized identifier, p) -> tInfVarDeclUntyped' p t identifier
+                else throwError $ TInfError (TInfErrorExpectedTypeTooGeneral annotatedT t') (AST.metaPos m)
+        (AST.VarDeclUntypedUnitialized identifier, m) -> tInfVarDeclUntyped' m t identifier
     where
-        tInfVarDecl' :: Pos.Pos -> Type -> AST.Identifier -> AST.Expression -> TInf (AST.VarDecl, String)
-        tInfVarDecl' p t identifier expr = do
+        tInfVarDecl' :: AST.Meta -> Type -> AST.Identifier -> AST.Expression -> TInf (AST.VarDecl, String)
+        tInfVarDecl' m t identifier expr = do
             tInfExpr t expr
             t' <- substitute t
-            let t'' = translateType p t'
-            return ((AST.VarDeclTyped t'' identifier expr, p), idName identifier)
-        tInfVarDeclUntyped' :: Pos.Pos -> Type -> AST.Identifier -> TInf (AST.VarDecl, String)
-        tInfVarDeclUntyped' p t identifier = do
-            let t' = translateType p t
-            return ((AST.VarDeclTypedUnitialized t' identifier, p), idName identifier)
+            let t'' = translateType m t'
+            return ((AST.VarDeclTyped t'' identifier expr, m), idName identifier)
+        tInfVarDeclUntyped' :: AST.Meta-> Type -> AST.Identifier -> TInf (AST.VarDecl, String)
+        tInfVarDeclUntyped' m t identifier = do
+            let t' = translateType m t
+            return ((AST.VarDeclTypedUnitialized t' identifier, m), idName identifier)
 
 tInfFunDecl :: Type -> AST.FunDecl -> TInf (AST.FunDecl, String)
 tInfFunDecl t decl =
     case decl of
-        (AST.FunDeclTyped identifier args annotatedType stmts, p) -> do
+        (AST.FunDeclTyped identifier args annotatedType stmts, m) -> do
             let annotatedT = rTranslateType annotatedType
-            (ast, str) <- tInfFunDecl' p t identifier args stmts
+            (ast, str) <- tInfFunDecl' m t identifier args stmts
             t' <- substitute t
-            s' <- mgu p annotatedT t' `catchError` (\_ ->
-                throwError $ TInfError (TInfErrorExpectedTypeUnify annotatedT t') p)
+            s' <- mgu m annotatedT t' `catchError` (\_ ->
+                throwError $ TInfError (TInfErrorExpectedTypeUnify annotatedT t') (AST.metaPos m))
             if apply s' annotatedT == applyOnlyRename s' annotatedT
                 then return (rewrite s' ast, str)
-                else throwError $ TInfError (TInfErrorExpectedTypeTooGeneral annotatedT t') p
-        (AST.FunDeclUntyped identifier args stmts, p) -> tInfFunDecl' p t identifier args stmts
+                else throwError $ TInfError (TInfErrorExpectedTypeTooGeneral annotatedT t') (AST.metaPos m)
+        (AST.FunDeclUntyped identifier args stmts, m) -> tInfFunDecl' m t identifier args stmts
     where
-        tInfFunDecl' :: Pos.Pos -> Type -> AST.Identifier -> [AST.Identifier] -> [AST.Statement] -> TInf (AST.FunDecl, String)
-        tInfFunDecl' p t identifier args stmts = do
+        tInfFunDecl' :: AST.Meta -> Type -> AST.Identifier -> [AST.Identifier] -> [AST.Statement] -> TInf (AST.FunDecl, String)
+        tInfFunDecl' m t identifier args stmts = do
             ctx <- ask
             let newCtx = Stack.stackPush ctx emptyCtx
             scopedCtx <- addArgsToCtx (idName identifier ++ "_") newCtx args -- Create the function's scoped context
@@ -722,11 +724,11 @@ tInfFunDecl t decl =
                 argsTypes <- getArgsTypes args
                 t'' <- substitute t'
                 let funType = TFunction argsTypes t''
-                mgu p t funType
+                mgu m t funType
                 funType' <- substitute funType
-                let funTypeAST = translateType p funType'
+                let funTypeAST = translateType m funType'
 
-                return ((AST.FunDeclTyped identifier args funTypeAST stmts', p), idName identifier))
+                return ((AST.FunDeclTyped identifier args funTypeAST stmts', m), idName identifier))
             where
                 addArgsToCtx :: String -> ScopedTypeCtx -> [AST.Identifier] -> TInf ScopedTypeCtx
                 addArgsToCtx prefix ctx [] = return ctx
@@ -737,17 +739,17 @@ tInfFunDecl t decl =
 
                 getArgsTypes :: [AST.Identifier] -> TInf [Type]
                 getArgsTypes [] = return []
-                getArgsTypes (arg@(_, p):args) = do
-                    t <- tInfVarName p (idName arg)
+                getArgsTypes (arg@(_, m):args) = do
+                    t <- tInfVarName (AST.metaPos m) (idName arg)
                     ts <- getArgsTypes args
                     t' <- substitute t
                     return $ t':ts
 
 tInfStatements :: Type -> [AST.Statement] -> TInf ([AST.Statement], Bool)
 tInfStatements t [] = do
-    mgu (Pos.emptyPos) t TVoid
+    mgu (AST.emptyMeta) t TVoid
     return ([], False)
-tInfStatements t (statement@(_,p):statements) = do
+tInfStatements t (statement@(_,m):statements) = do
     t' <- newTypeVar "stmt"
     (statement', varName, returnsValue1) <- tInfStatement t' statement
     t'' <- substitute t'
@@ -765,16 +767,16 @@ tInfStatements t (statement@(_,p):statements) = do
         if returnsValue1
             then if returnsValue2
                 then do
-                    mgu p t'' tRemaining
-                    mgu p t t''
+                    mgu m t'' tRemaining
+                    mgu m t t''
                     s <- substitution
                     return (rewrite s statement : statements', True)
                 else do
-                    mgu p t t''
+                    mgu m t t''
                     s <- substitution
                     return (rewrite s statement : statements', True)
             else do
-                mgu p t tRemaining
+                mgu m t tRemaining
                 s <- substitution
                 return (rewrite s statement' : statements', False)
         )
@@ -786,20 +788,20 @@ tInfManyStatements (t:ts) (stmt:stmts) = do
     tInfManyStatements ts stmts
 
 tInfStatement :: Type -> AST.Statement -> TInf (AST.Statement, String, Bool)
-tInfStatement t (AST.StmtVarDecl decl, p) = do
+tInfStatement t (AST.StmtVarDecl decl, m) = do
     (decl', varName) <- tInfVarDecl t decl
     ctx <- ask
     case Stack.stackPeek ctx of
         Just (TypeCtx ctx') ->
             if Map.member varName ctx'
-                then throwError $ TInfError (TInfErrorVariableMultiplyDefined varName) p
-                else return ((AST.StmtVarDecl decl', p), varName, False)
+                then throwError $ TInfError (TInfErrorVariableMultiplyDefined varName) (AST.metaPos m)
+                else return ((AST.StmtVarDecl decl', m), varName, False)
 
-tInfStatement t (AST.StmtIf expr st, p) = do
+tInfStatement t (AST.StmtIf expr st, m) = do
     tInfExpr TBool expr
     (st', varName, returnsValue) <- tInfStatement t st
-    return ((AST.StmtIf expr st', p), varName, returnsValue)
-tInfStatement t (AST.StmtIfElse expr st1 st2, p) = do
+    return ((AST.StmtIf expr st', m), varName, returnsValue)
+tInfStatement t (AST.StmtIfElse expr st1 st2, m) = do
     tInfExpr TBool expr
     t1 <- newTypeVar "st"
     t2 <- newTypeVar "st"
@@ -809,45 +811,45 @@ tInfStatement t (AST.StmtIfElse expr st1 st2, p) = do
     if returnsValue1
         then if returnsValue2
             then do
-                mgu p t1 t2
+                mgu m t1 t2
                 s <- substitution
                 return (
-                    (AST.StmtIfElse expr (rewrite s st1') (rewrite s st2'), p),
+                    (AST.StmtIfElse expr (rewrite s st1') (rewrite s st2'), m),
                     "",
                     True)
             else do
                 s <- substitution
                 return (
-                    (AST.StmtIfElse expr (rewrite s st1') st2', p),
+                    (AST.StmtIfElse expr (rewrite s st1') st2', m),
                     "",
                     True)
         else do
             s <- substitution
             return (
-                (AST.StmtIfElse expr (rewrite s st1') st2', p),
+                (AST.StmtIfElse expr (rewrite s st1') st2', m),
                 "",
                 False)
-tInfStatement t (AST.StmtWhile expr st, p) = do
+tInfStatement t (AST.StmtWhile expr st, m) = do
     tInfExpr TBool expr
     (st', varName, returnsValue) <- tInfStatement t st
-    return ((AST.StmtWhile expr st', p), varName, returnsValue)
-tInfStatement t (AST.StmtBlock stmts, p) = do
+    return ((AST.StmtWhile expr st', m), varName, returnsValue)
+tInfStatement t (AST.StmtBlock stmts, m) = do
     ctx <- ask
     let newCtx = Stack.stackPush ctx emptyCtx
     local (const newCtx) (do
         (stmts', returnsValue) <- tInfStatements t stmts
-        return ((AST.StmtBlock stmts', p), "", returnsValue))
-tInfStatement t (AST.StmtAssignment expr1 expr2, p) = do
+        return ((AST.StmtBlock stmts', m), "", returnsValue))
+tInfStatement t (AST.StmtAssignment expr1 expr2, m) = do
     tInfExpr t expr1
     tInfExpr t expr2
-    return ((AST.StmtAssignment expr1 expr2, p), "", False)
-tInfStatement t (AST.StmtFunCall identifier expressions, p) = do
-    tInfExpr t (AST.ExprFunCall identifier expressions, p)
-    return ((AST.StmtFunCall identifier expressions, p), "", False)
-tInfStatement t (AST.StmtReturn expr, p) = do
+    return ((AST.StmtAssignment expr1 expr2, m), "", False)
+tInfStatement t (AST.StmtFunCall identifier expressions, m) = do
+    tInfExpr t (AST.ExprFunCall identifier expressions, m)
+    return ((AST.StmtFunCall identifier expressions, m), "", False)
+tInfStatement t (AST.StmtReturn expr, m) = do
     tInfExpr t expr
-    return ((AST.StmtReturn expr, p), "", True)
-tInfStatement t (AST.StmtReturnVoid, p) = return ((AST.StmtReturnVoid, p), "", True)
+    return ((AST.StmtReturn expr, m), "", True)
+tInfStatement t (AST.StmtReturnVoid, m) = return ((AST.StmtReturnVoid, m), "", True)
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -955,16 +957,16 @@ instance Dependencies AST.Identifier where
 
 ------------------------------------------------------------------------------------------------------------------------
 
-translateType :: Pos.Pos -> Type -> AST.Type
-translateType p (TVar str)         = (AST.TypeIdentifier (AST.Identifier str, p), p)
-translateType p TVoid              = (AST.TypeVoid, p)
-translateType p TBool              = (AST.TypeBool, p)
-translateType p TInt               = (AST.TypeInt, p)
-translateType p TChar              = (AST.TypeChar, p)
-translateType p (TList t)          = (AST.TypeList $ translateType p t, p)
-translateType p (TTuple t1 t2)     = (AST.TypeTuple (translateType p t1) (translateType p t2), p)
-translateType p (TPointer t)       = (AST.TypePointer $ translateType p t, p)
-translateType p (TFunction args t) = (AST.TypeFunction (map (translateType p) args) (translateType p t), p)
+translateType :: AST.Meta -> Type -> AST.Type
+translateType m (TVar str)         = (AST.TypeIdentifier (AST.Identifier str, m), m)
+translateType m TVoid              = (AST.TypeVoid, m)
+translateType m TBool              = (AST.TypeBool, m)
+translateType m TInt               = (AST.TypeInt, m)
+translateType m TChar              = (AST.TypeChar, m)
+translateType m (TList t)          = (AST.TypeList $ translateType m t, m)
+translateType m (TTuple t1 t2)     = (AST.TypeTuple (translateType m t1) (translateType m t2), m)
+translateType m (TPointer t)       = (AST.TypePointer $ translateType m t, m)
+translateType m (TFunction args t) = (AST.TypeFunction (map (translateType m) args) (translateType m t), m)
 
 rTranslateType :: AST.Type -> Type
 rTranslateType (AST.TypeIdentifier id, _)   = TVar $ idName id
@@ -985,31 +987,31 @@ instance RewriteAST a => RewriteAST [a] where
     rewrite s = map (rewrite s)
 
 instance RewriteAST AST.Type where
-    rewrite s (t, p) = translateType p $ apply s $ rTranslateType (t, p)
+    rewrite s (t, m) = translateType m $ apply s $ rTranslateType (t, m)
 
 instance RewriteAST AST.Decl where
-    rewrite s (AST.DeclV v, p) = (AST.DeclV (rewrite s v), p)
-    rewrite s (AST.DeclF f, p) = (AST.DeclF (rewrite s f), p)
+    rewrite s (AST.DeclV v, m) = (AST.DeclV (rewrite s v), m)
+    rewrite s (AST.DeclF f, m) = (AST.DeclF (rewrite s f), m)
 
 instance RewriteAST AST.VarDecl where
-    rewrite s (AST.VarDeclTyped t i e, p) = (AST.VarDeclTyped (rewrite s t) (rewrite s i) (rewrite s e), p)
-    rewrite s (AST.VarDeclUntyped i e, p) = (AST.VarDeclUntyped (rewrite s i) (rewrite s e), p)
-    rewrite s (AST.VarDeclTypedUnitialized t i, p) = (AST.VarDeclTypedUnitialized (rewrite s t) (rewrite s i), p)
-    rewrite s (AST.VarDeclUntypedUnitialized i, p) = (AST.VarDeclUntypedUnitialized (rewrite s i), p)
+    rewrite s (AST.VarDeclTyped t i e, m) = (AST.VarDeclTyped (rewrite s t) (rewrite s i) (rewrite s e), m)
+    rewrite s (AST.VarDeclUntyped i e, m) = (AST.VarDeclUntyped (rewrite s i) (rewrite s e), m)
+    rewrite s (AST.VarDeclTypedUnitialized t i, m) = (AST.VarDeclTypedUnitialized (rewrite s t) (rewrite s i), m)
+    rewrite s (AST.VarDeclUntypedUnitialized i, m) = (AST.VarDeclUntypedUnitialized (rewrite s i), m)
 
 instance RewriteAST AST.FunDecl where
-    rewrite s (AST.FunDeclTyped i is t ss, p) = (AST.FunDeclTyped (rewrite s i) (rewrite s is) (rewrite s t) (rewrite s ss), p)
-    rewrite s (AST.FunDeclUntyped i is ss, p) = (AST.FunDeclUntyped (rewrite s i) (rewrite s is) (rewrite s ss), p)
+    rewrite s (AST.FunDeclTyped i is t ss, m) = (AST.FunDeclTyped (rewrite s i) (rewrite s is) (rewrite s t) (rewrite s ss), m)
+    rewrite s (AST.FunDeclUntyped i is ss, m) = (AST.FunDeclUntyped (rewrite s i) (rewrite s is) (rewrite s ss), m)
 
 instance RewriteAST AST.Statement where
-    rewrite s (AST.StmtVarDecl v, p) = (AST.StmtVarDecl (rewrite s v), p)
-    rewrite s (AST.StmtIf e st, p) = (AST.StmtIf (rewrite s e) (rewrite s st), p)
-    rewrite s (AST.StmtIfElse e st1 st2, p) = (AST.StmtIfElse (rewrite s e) (rewrite s st1) (rewrite s st2), p)
-    rewrite s (AST.StmtWhile e st, p) = (AST.StmtWhile (rewrite s e) (rewrite s st), p)
-    rewrite s (AST.StmtBlock sts, p) = (AST.StmtBlock (rewrite s sts), p)
-    rewrite s (AST.StmtAssignment e1 e2, p) = (AST.StmtAssignment (rewrite s e1) (rewrite s e2), p)
-    rewrite s (AST.StmtFunCall i es, p) = (AST.StmtFunCall (rewrite s i) (rewrite s es), p)
-    rewrite s (AST.StmtReturn e, p) = (AST.StmtReturn (rewrite s e), p)
+    rewrite s (AST.StmtVarDecl v, m) = (AST.StmtVarDecl (rewrite s v), m)
+    rewrite s (AST.StmtIf e st, m) = (AST.StmtIf (rewrite s e) (rewrite s st), m)
+    rewrite s (AST.StmtIfElse e st1 st2, m) = (AST.StmtIfElse (rewrite s e) (rewrite s st1) (rewrite s st2), m)
+    rewrite s (AST.StmtWhile e st, m) = (AST.StmtWhile (rewrite s e) (rewrite s st), m)
+    rewrite s (AST.StmtBlock sts, m) = (AST.StmtBlock (rewrite s sts), m)
+    rewrite s (AST.StmtAssignment e1 e2, m) = (AST.StmtAssignment (rewrite s e1) (rewrite s e2), m)
+    rewrite s (AST.StmtFunCall i es, m) = (AST.StmtFunCall (rewrite s i) (rewrite s es), m)
+    rewrite s (AST.StmtReturn e, m) = (AST.StmtReturn (rewrite s e), m)
     rewrite _ st = st
 
 instance RewriteAST AST.Field where

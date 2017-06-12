@@ -58,7 +58,7 @@ pInclude :: Parser AST.Decl
 pInclude = tokenPrim show advance
     (
         \tp -> case tp of
-            TP (TInclude s) p -> Just (AST.DeclI (AST.IncludeDecl s, p), p)
+            TP (TInclude s) p -> Just (AST.DeclI (AST.IncludeDecl s, AST.metaFromPos p), AST.metaFromPos p)
             _ -> Nothing
     ) <?> "an include statement"
 
@@ -85,12 +85,12 @@ pVarDecl = (do
                         tok (TOperator OAssignment)
                         expression <- pExpression
                         tok (TPunctuator PSeparator)
-                        return (AST.VarDeclUntyped identifier expression, p)
+                        return (AST.VarDeclUntyped identifier expression, AST.metaFromPos p)
                     _ -> do
                         tok (TPunctuator PSeparator)
-                        return (AST.VarDeclUntypedUnitialized identifier, p)
+                        return (AST.VarDeclUntypedUnitialized identifier, AST.metaFromPos p)
             _ -> do
-                (type', p) <- pType
+                (type', m) <- pType
                 identifier <- pIdentifier
                 t' <- pPeek
                 case t' of
@@ -98,15 +98,15 @@ pVarDecl = (do
                         tok (TOperator OAssignment)
                         expression <- pExpression
                         tok (TPunctuator PSeparator)
-                        return (AST.VarDeclTyped (type', p) identifier expression, p)
+                        return (AST.VarDeclTyped (type', m) identifier expression, m)
                     _ -> do
                         tok (TPunctuator PSeparator)
-                        return (AST.VarDeclTypedUnitialized (type', p) identifier, p)
+                        return (AST.VarDeclTypedUnitialized (type', m) identifier, m)
     ) <?> "a variable declaration"
 
 pFunDecl :: Parser AST.FunDecl
 pFunDecl = (do
-        (identifier, p) <- pIdentifier
+        (identifier, m) <- pIdentifier
         tok (TPunctuator PParenOpen)
         args <- pFunArgsDef
         tok (TPunctuator PParenClose)
@@ -118,12 +118,12 @@ pFunDecl = (do
                 tok (TPunctuator PBraceOpen)
                 statements <- many1 pStatement
                 tok (TPunctuator PBraceClose) <?> "a closing brace"
-                return (AST.FunDeclTyped (identifier, p) args funType statements, p)
+                return (AST.FunDeclTyped (identifier, m) args funType statements, m)
             _ -> do
                 tok (TPunctuator PBraceOpen)
                 statements <- many1 pStatement
                 tok (TPunctuator PBraceClose) <?> "a closing brace"
-                return (AST.FunDeclUntyped (identifier, p) args statements, p)
+                return (AST.FunDeclUntyped (identifier, m) args statements, m)
     ) <?> "a function declaration"
 
 pFunArgsDef :: Parser [AST.Identifier]
@@ -148,7 +148,7 @@ pFunType = (do
         types <- many pType <?> "argument types"
         TP _ p <- tok (TPunctuator PMapTo) <?> "a 'maps to' symbol (->)"
         returnType <- pType <?> "a return type"
-        return (AST.TypeFunction types returnType, p)
+        return (AST.TypeFunction types returnType, AST.metaFromPos p)
     ) <?> "a function type"
 
 pType :: Parser AST.Type
@@ -157,12 +157,12 @@ pType = do
     pType' t
     where
         pType' :: AST.Type -> Parser AST.Type
-        pType' t@(_, p) = do
+        pType' t@(_, m) = do
             token <- pPeek
             case token of
                 TPunctuator PAsterisk -> do
                     tok token
-                    pType' (AST.TypePointer t, p)
+                    pType' (AST.TypePointer t, m)
                 _ -> return t
 
 pTypeTuple :: Parser AST.Type
@@ -172,7 +172,7 @@ pTypeTuple = (do
         tok (TPunctuator PComma)
         t2 <-  pType
         tok (TPunctuator PParenClose)
-        return (AST.TypeTuple t1 t2, p)
+        return (AST.TypeTuple t1 t2, AST.metaFromPos p)
     ) <?> "a tuple type"
 
 pTypeList :: Parser AST.Type
@@ -180,36 +180,36 @@ pTypeList = (do
         TP _ p <- tok (TPunctuator PSquareBracketOpen)
         t <- pType
         tok (TPunctuator PSquareBracketClose)
-        return (AST.TypeList t, p)
+        return (AST.TypeList t, AST.metaFromPos p)
     ) <?> "a list type"
 
 pTypeBasic :: Parser AST.Type
 pTypeBasic = ((do
         TP _ p <- tok (TType Data.Token.TypeVoid)
-        return (AST.TypeVoid, p)
+        return (AST.TypeVoid, AST.metaFromPos p)
     ) <|>
     (do
         TP _ p <- tok (TType Data.Token.TypeInt)
-        return (AST.TypeInt, p)
+        return (AST.TypeInt, AST.metaFromPos p)
     ) <|>
     (do
         TP _ p <- tok (TType Data.Token.TypeBool)
-        return (AST.TypeBool, p)
+        return (AST.TypeBool, AST.metaFromPos p)
     ) <|>
     (do
         TP _ p <- tok (TType Data.Token.TypeChar)
-        return (AST.TypeChar, p)
+        return (AST.TypeChar, AST.metaFromPos p)
     )) <?> "a basic type (Void, Int, Bool, Char)"
 
 pTypeIdentifier :: Parser AST.Type
 pTypeIdentifier = (do
-    (identifier, p) <- pIdentifier
-    return (AST.TypeIdentifier (identifier, p), p)) <?> "a type identifier"
+    (identifier, m) <- pIdentifier
+    return (AST.TypeIdentifier (identifier, m), m)) <?> "a type identifier"
 
 pStatement :: Parser AST.Statement
 pStatement = (do
-        (varDecl, p) <- try pVarDecl
-        return (AST.StmtVarDecl (varDecl, p), p)
+        (varDecl, m) <- try pVarDecl
+        return (AST.StmtVarDecl (varDecl, m), m)
     ) <|> pStatementConditional <|> pStatementWhile <|> pStatementReturn <|> pStatementBlock <|> try pStatementFunCall <|> pStatementAssignment
 
 pStatementConditional :: Parser AST.Statement
@@ -223,8 +223,8 @@ pStatementConditional =
             TKeyword KElse -> do
                 tok (TKeyword KElse)
                 statements' <- pStatement
-                return (AST.StmtIfElse condition statements statements', p)
-            _ -> return (AST.StmtIf condition statements, p)
+                return (AST.StmtIfElse condition statements statements', AST.metaFromPos p)
+            _ -> return (AST.StmtIf condition statements, AST.metaFromPos p)
     ) <?> "an if or if-else statement"
 
 pStatementWhile :: Parser AST.Statement
@@ -233,7 +233,7 @@ pStatementWhile =
         TP _ p <- tok (TKeyword KWhile)
         condition <- pCondition
         statements <- pStatement
-        return (AST.StmtWhile condition statements, p)
+        return (AST.StmtWhile condition statements, AST.metaFromPos p)
     ) <?> "a while statement"
 
 pCondition :: Parser AST.Expression
@@ -251,25 +251,25 @@ pStatementBlock =
         TP _ p <- tok (TPunctuator PBraceOpen)
         statements <- many pStatement
         tok (TPunctuator PBraceClose)
-        return (AST.StmtBlock statements, p)
+        return (AST.StmtBlock statements, AST.metaFromPos p)
     ) <?> "a statement block"
 
 pStatementFunCall :: Parser AST.Statement
 pStatementFunCall = do
-    (expr, p) <- pExpressionIdentifier
+    (expr, m) <- pExpressionIdentifier
     let AST.ExprFunCall identifier args = expr
     tok (TPunctuator PSeparator)
-    return (AST.StmtFunCall identifier args, p)
+    return (AST.StmtFunCall identifier args, m)
     <?> "a function call"
 
 pStatementAssignment :: Parser AST.Statement
 pStatementAssignment =
     (do
-        expr1@(_, p) <- pExpression
+        expr1@(_, m) <- pExpression
         tok (TOperator OAssignment)
         expr2 <- pExpression
         tok (TPunctuator PSeparator)
-        return (AST.StmtAssignment expr1 expr2, p)
+        return (AST.StmtAssignment expr1 expr2, m)
     ) <?> "an assignment"
 
 pStatementReturn :: Parser AST.Statement
@@ -278,8 +278,8 @@ pStatementReturn = (do
     maybeExpr <- optionMaybe pExpression
     tok (TPunctuator PSeparator)
     case maybeExpr of
-        Just expr -> return (AST.StmtReturn expr, p)
-        Nothing -> return (AST.StmtReturnVoid, p)) <?> "a return statement"
+        Just expr -> return (AST.StmtReturn expr, AST.metaFromPos p)
+        Nothing -> return (AST.StmtReturnVoid, AST.metaFromPos p)) <?> "a return statement"
 
 pExpression :: Parser AST.Expression
 pExpression = pExpression' 1
@@ -287,29 +287,29 @@ pExpression = pExpression' 1
         pExpression' :: Int -> Parser AST.Expression
         pExpression' 8          = pExprBase
         pExpression' precedence = do {
-            (expr, p) <- pExpression' (precedence + 1); (do
+            (expr, m) <- pExpression' (precedence + 1); (do
                 binaryOperator <- try (lookAhead pBinaryOperator)
                 if AST.binaryOperatorPrecedence binaryOperator == precedence
                     then
                         case AST.binaryOperatorAssociativity binaryOperator of
                             AST.ALeft -> -- Left associativity
-                                pLeftAssocExpression (expr, p) precedence
+                                pLeftAssocExpression (expr, m) precedence
                             AST.ARight -> do -- Right associativity
                                 pBinaryOperator -- Consume binary operator
                                 expr' <- pExpression' precedence
-                                return (AST.ExprBinaryOp binaryOperator (expr, p) expr', p)
-                    else return (expr, p)
-            ) <|> return (expr, p)}
+                                return (AST.ExprBinaryOp binaryOperator (expr, m) expr', m)
+                    else return (expr, m)
+            ) <|> return (expr, m)}
         pLeftAssocExpression :: AST.Expression -> Int -> Parser AST.Expression
-        pLeftAssocExpression (e1, p) precedence = do {
+        pLeftAssocExpression (e1, m) precedence = do {
                 bOp <- try (lookAhead pBinaryOperator);
                 if AST.binaryOperatorPrecedence bOp == precedence && AST.binaryOperatorAssociativity bOp == AST.ALeft
                     then do
                         pBinaryOperator -- Consume binary operator
                         e2 <- pExpression' (precedence + 1);
-                        pLeftAssocExpression (AST.ExprBinaryOp bOp (e1, p) e2, p) precedence
-                    else return (e1, p)
-            } <|> return (e1, p)
+                        pLeftAssocExpression (AST.ExprBinaryOp bOp (e1, m) e2, m) precedence
+                    else return (e1, m)
+            } <|> return (e1, m)
 
 pExprBase :: Parser AST.Expression
 pExprBase = do
@@ -321,23 +321,23 @@ pExprBase = do
      pExprBase' expr
      where
          pExprBase' :: AST.Expression -> Parser AST.Expression
-         pExprBase' expr@(_, p) = do
+         pExprBase' expr@(_, m) = do
              field <- many pField
              case field of
                  [] -> return expr
-                 _ -> return (AST.ExprField expr field, p)
+                 _ -> return (AST.ExprField expr field, m)
 
 pExpressionIdentifier :: Parser AST.Expression
 pExpressionIdentifier = do
-    (identifier, p) <- pIdentifier
+    (identifier, m) <- pIdentifier
     t <- pPeek
     case t of
         (TPunctuator PParenOpen) -> do
             tok (TPunctuator PParenOpen)
             args <- pFunArgs
             tok (TPunctuator PParenClose) <?> "closing function call parenthesis"
-            return (AST.ExprFunCall (identifier, p) args, p)
-        _ -> return (AST.ExprIdentifier (identifier, p), p)
+            return (AST.ExprFunCall (identifier, m) args, m)
+        _ -> return (AST.ExprIdentifier (identifier, m), m)
 
 pFunArgs :: Parser [AST.Expression]
 pFunArgs = (
@@ -357,27 +357,27 @@ pFunArgs = (
 
 pExpressionUnaryOperator :: Parser AST.Expression
 pExpressionUnaryOperator = do
-    (unaryOp, p) <- pUnaryOperator
+    (unaryOp, m) <- pUnaryOperator
     expression <- pExprBase
-    return (AST.ExprUnaryOp (unaryOp, p) expression, p)
+    return (AST.ExprUnaryOp (unaryOp, m) expression, m)
 
 pExpressionConst :: Parser AST.Expression
 pExpressionConst = do
-    (constant, p) <- pConstant
-    return (AST.ExprConstant (constant, p), p)
+    (constant, m) <- pConstant
+    return (AST.ExprConstant (constant, m), m)
 
 pExprGroupOrTuple :: Parser AST.Expression
 pExprGroupOrTuple = do
     tok (TPunctuator PParenOpen) <?> "a parenthesized expression or tuple"
-    (expression, p) <- pExpression
+    (expression, m) <- pExpression
     t <- pPeek
-    (tok (TPunctuator PParenClose) >> return (expression, p) <?> "a parenthesized expression") <|>
+    (tok (TPunctuator PParenClose) >> return (expression, m) <?> "a parenthesized expression") <|>
         (
             do
                 tok (TPunctuator PComma)
                 expression' <- pExpression
                 tok (TPunctuator PParenClose)
-                return (AST.ExprTuple (expression, p) expression', p)
+                return (AST.ExprTuple (expression, m) expression', m)
             <?> "a tuple"
         )
 
@@ -385,10 +385,10 @@ pConstant :: Parser AST.Constant
 pConstant = tokenPrim show advance
     (
         \tp -> case tp of
-            TP (TConstant (CBool b)) p -> Just (AST.ConstBool b, p)
-            TP (TConstant (CInt i)) p -> Just (AST.ConstInt i, p)
-            TP (TConstant (CChar c)) p -> Just (AST.ConstChar c, p)
-            TP (TConstant CEmptyList) p -> Just (AST.ConstEmptyList, p)
+            TP (TConstant (CBool b)) p -> Just (AST.ConstBool b, AST.metaFromPos p)
+            TP (TConstant (CInt i)) p -> Just (AST.ConstInt i, AST.metaFromPos p)
+            TP (TConstant (CChar c)) p -> Just (AST.ConstChar c, AST.metaFromPos p)
+            TP (TConstant CEmptyList) p -> Just (AST.ConstEmptyList, AST.metaFromPos p)
             _ -> Nothing
     ) <?> "a constant"
 
@@ -397,40 +397,40 @@ pUnaryOperator =
         tokenPrim show advance
         (
             \tp -> case tp of
-                TP (TOperator ONeg) p -> Just (AST.UnaryOpNeg, p)
-                TP (TPunctuator PMinus) p -> Just (AST.UnaryOpSubtr, p)
-                TP (TPunctuator PAmpersand) p -> Just (AST.UnaryOpReference, p)
-                TP (TPunctuator PAsterisk) p -> Just (AST.UnaryOpDereference, p)
-                TP (TPunctuator PTilde) p -> Just (AST.UnaryOpBitwiseNot, p)
+                TP (TOperator ONeg) p -> Just (AST.UnaryOpNeg, AST.metaFromPos p)
+                TP (TPunctuator PMinus) p -> Just (AST.UnaryOpSubtr, AST.metaFromPos p)
+                TP (TPunctuator PAmpersand) p -> Just (AST.UnaryOpReference, AST.metaFromPos p)
+                TP (TPunctuator PAsterisk) p -> Just (AST.UnaryOpDereference, AST.metaFromPos p)
+                TP (TPunctuator PTilde) p -> Just (AST.UnaryOpBitwiseNot, AST.metaFromPos p)
                 _ -> Nothing
         ) <|> ( do
             TP _ p <- tok (TPunctuator PParenOpen)
             t <- pType
             tok (TPunctuator PParenClose)
-            return (AST.UnaryOpCast t, p)
+            return (AST.UnaryOpCast t, AST.metaFromPos p)
         ) <?> "a unary operator"
 
 pBinaryOperator :: Parser AST.BinaryOperator
 pBinaryOperator = tokenPrim show advance
     (
         \tp -> case tp of
-            TP (TOperator OEq) p -> Just (AST.BinaryOpEq, p)
-            TP (TOperator ONEq) p -> Just (AST.BinaryOpNEq, p)
-            TP (TOperator OLT) p -> Just (AST.BinaryOpLT, p)
-            TP (TOperator OGT) p -> Just (AST.BinaryOpGT, p)
-            TP (TOperator OLTE) p -> Just (AST.BinaryOpLTE, p)
-            TP (TOperator OGTE) p -> Just (AST.BinaryOpGTE, p)
-            TP (TOperator OConcat) p -> Just (AST.BinaryOpConcat, p)
-            TP (TOperator OPlus) p -> Just (AST.BinaryOpPlus, p)
-            TP (TPunctuator PMinus) p -> Just (AST.BinaryOpSubtr, p)
-            TP (TOperator OReferencePlus) p -> Just (AST.BinaryOpReferencePlus, p)
-            TP (TOperator OReferenceMinus) p -> Just (AST.BinaryOpReferenceSubtr, p)
-            TP (TOperator OReferenceReferenceMinus) p -> Just (AST.BinaryOpReferenceReferenceSubtr, p)
-            TP (TPunctuator PAsterisk) p -> Just (AST.BinaryOpMult, p)
-            TP (TOperator ODivide) p -> Just (AST.BinaryOpDiv, p)
-            TP (TOperator OMod) p -> Just (AST.BinaryOpMod, p)
-            TP (TOperator OBitShiftLeft) p -> Just (AST.BinaryOpBitShiftLeft, p)
-            TP (TOperator OBitShiftRight) p -> Just (AST.BinaryOpBitShiftRight, p)
+            TP (TOperator OEq) p -> Just (AST.BinaryOpEq, AST.metaFromPos p)
+            TP (TOperator ONEq) p -> Just (AST.BinaryOpNEq, AST.metaFromPos p)
+            TP (TOperator OLT) p -> Just (AST.BinaryOpLT, AST.metaFromPos p)
+            TP (TOperator OGT) p -> Just (AST.BinaryOpGT, AST.metaFromPos p)
+            TP (TOperator OLTE) p -> Just (AST.BinaryOpLTE, AST.metaFromPos p)
+            TP (TOperator OGTE) p -> Just (AST.BinaryOpGTE, AST.metaFromPos p)
+            TP (TOperator OConcat) p -> Just (AST.BinaryOpConcat, AST.metaFromPos p)
+            TP (TOperator OPlus) p -> Just (AST.BinaryOpPlus, AST.metaFromPos p)
+            TP (TPunctuator PMinus) p -> Just (AST.BinaryOpSubtr, AST.metaFromPos p)
+            TP (TOperator OReferencePlus) p -> Just (AST.BinaryOpReferencePlus, AST.metaFromPos p)
+            TP (TOperator OReferenceMinus) p -> Just (AST.BinaryOpReferenceSubtr, AST.metaFromPos p)
+            TP (TOperator OReferenceReferenceMinus) p -> Just (AST.BinaryOpReferenceReferenceSubtr, AST.metaFromPos p)
+            TP (TPunctuator PAsterisk) p -> Just (AST.BinaryOpMult, AST.metaFromPos p)
+            TP (TOperator ODivide) p -> Just (AST.BinaryOpDiv, AST.metaFromPos p)
+            TP (TOperator OMod) p -> Just (AST.BinaryOpMod, AST.metaFromPos p)
+            TP (TOperator OBitShiftLeft) p -> Just (AST.BinaryOpBitShiftLeft, AST.metaFromPos p)
+            TP (TOperator OBitShiftRight) p -> Just (AST.BinaryOpBitShiftRight, AST.metaFromPos p)
             _ -> Nothing
     ) <|> try ( do
         TP _ p <- tok (TPunctuator PAmpersand)
@@ -438,22 +438,22 @@ pBinaryOperator = tokenPrim show advance
         case t of
             TPunctuator PAmpersand -> do
                 tok (TPunctuator PAmpersand)
-                return (AST.BinaryOpAnd, p)
-            _ -> return (AST.BinaryOpBitwiseAnd, p)
+                return (AST.BinaryOpAnd, AST.metaFromPos p)
+            _ -> return (AST.BinaryOpBitwiseAnd, AST.metaFromPos p)
     ) <|> try ( do
         TP _ p <- tok (TPunctuator PPipe)
         tok (TPunctuator PPipe)
-        return (AST.BinaryOpOr, p)
+        return (AST.BinaryOpOr, AST.metaFromPos p)
     ) <?> "a binary operator"
 
 pField :: Parser AST.Field
 pField = tokenPrim show advance
     (
         \tp -> case tp of
-            TP (TField FHd) p -> Just (AST.FieldHd, p)
-            TP (TField FTl) p -> Just (AST.FieldTl, p)
-            TP (TField FFst) p -> Just (AST.FieldFst, p)
-            TP (TField FSnd) p -> Just (AST.FieldSnd, p)
+            TP (TField FHd) p -> Just (AST.FieldHd, AST.metaFromPos p)
+            TP (TField FTl) p -> Just (AST.FieldTl, AST.metaFromPos p)
+            TP (TField FFst) p -> Just (AST.FieldFst, AST.metaFromPos p)
+            TP (TField FSnd) p -> Just (AST.FieldSnd, AST.metaFromPos p)
             _ -> Nothing
     ) <?> "a field identifier"
 
@@ -461,7 +461,7 @@ pIdentifier :: Parser AST.Identifier
 pIdentifier = tokenPrim show advance
     (
         \tp -> case tp of
-            TP (TIdentifier identifier) p -> Just (AST.Identifier identifier, p)
+            TP (TIdentifier identifier) p -> Just (AST.Identifier identifier, AST.metaFromPos p)
             _ -> Nothing
     ) <?> "an identifier"
 

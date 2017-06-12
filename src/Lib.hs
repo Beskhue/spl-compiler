@@ -20,16 +20,15 @@ compile :: IO ()
 compile = do
     ast <- askAndParse
     a <- checkWithIncludes ast
-    let spl = concatMap fst a
-    let annotation = foldr (Map.union . snd) Map.empty a
-    ssm <- eitherToRight $ SSM.gen annotation spl
+    let spl = concat a
+    ssm <- eitherToRight $ SSM.gen spl
     putStrLn $ SSM.display ssm
 
 prettyPrint :: IO ()
 prettyPrint = do
     ast <- askAndParse
     a <- checkWithIncludes ast
-    let spl = fst $ head a
+    let spl = head a
     putStrLn $ AST.prettyPrint spl
 
 parse :: (RawSPL, Lib.FilePath) -> IO AST.SPL
@@ -96,7 +95,7 @@ typedASTToCtx (decl:decls) =
             (AST.DeclF (AST.FunDeclTyped i _ t _, _), _) ->
                 Map.insert (Checker.idName i) (Checker.generalize Checker.emptyScopedCtx (Checker.rTranslateType t)) schemes
 
-checkWithIncludes :: AST.SPL -> IO [(AST.SPL, Checker.ASTAnnotation)]
+checkWithIncludes :: AST.SPL -> IO [AST.SPL]
 checkWithIncludes spl = do
     r <- checkWithIncludes' spl [] [] [] Map.empty
     return $ fst r
@@ -104,10 +103,10 @@ checkWithIncludes spl = do
         checkWithIncludes' ::
             AST.SPL ->
             AST.SPL ->
-            [(AST.SPL, Checker.ASTAnnotation)] ->
+            [AST.SPL] ->
             [String] ->
             Map.Map String Type.Scheme ->
-            IO ([(AST.SPL, Checker.ASTAnnotation)], Map.Map String Type.Scheme)
+            IO ([AST.SPL], Map.Map String Type.Scheme)
         checkWithIncludes' (d@(AST.DeclI (AST.IncludeDecl s, _), _):decls) includeDecls spls included accum =
             if s `elem` included
                 then checkWithIncludes' decls (d:includeDecls) spls included accum
@@ -116,5 +115,5 @@ checkWithIncludes spl = do
                     (r, schemes) <- checkWithIncludes' spl [] spls (s : included) accum
                     checkWithIncludes' decls (d:includeDecls) (r ++ spls) (s : included) (Map.union accum schemes)
         checkWithIncludes' decls includeDecls spls included accum = do
-            (spl, annotation) <- Lib.eitherToRight $ Checker.check False (Checker.TypeCtx accum) decls
-            return ((includeDecls ++ spl, annotation) : spls, Map.union accum (typedASTToCtx spl))
+            spl <- Lib.eitherToRight $ Checker.check False (Checker.TypeCtx accum) decls
+            return ((includeDecls ++ spl) : spls, Map.union accum (typedASTToCtx spl))

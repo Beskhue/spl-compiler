@@ -4,6 +4,7 @@
 module Data.AST where
 
 import Data.Pos
+import qualified Data.Type as Type
 
 class PrettyPrint a where
     prettyPrint :: a -> String
@@ -12,6 +13,15 @@ class ASTEq a where
     astEq :: a -> a -> Bool
 
 type SPL             = [Decl]
+
+data Meta = Meta {metaPos :: Pos, metaType :: Maybe Type.Type}
+            deriving (Eq, Show)
+
+metaFromPos :: Pos -> Meta
+metaFromPos p = Meta {metaPos = p, metaType = Nothing}
+
+emptyMeta :: Meta
+emptyMeta = Meta {metaPos = emptyPos, metaType = Nothing}
 
 {-
 instance PrettyPrint SPL where
@@ -36,7 +46,7 @@ data Decl'           = DeclI IncludeDecl
                      | DeclV VarDecl
                      | DeclF FunDecl
                        deriving (Eq, Show)
-type Decl            = (Decl', Pos)
+type Decl            = (Decl', Meta)
 
 instance PrettyPrint Decl where
     prettyPrint (DeclI i, _) = prettyPrint i
@@ -51,7 +61,7 @@ instance (ASTEq Decl) where
 
 data IncludeDecl'    = IncludeDecl String
                        deriving (Eq, Show)
-type IncludeDecl     = (IncludeDecl', Pos)
+type IncludeDecl     = (IncludeDecl', Meta)
 
 instance PrettyPrint IncludeDecl where
     prettyPrint (IncludeDecl filePath, _) = "#include \"" ++ filePath ++ "\""
@@ -64,7 +74,7 @@ data VarDecl'        = VarDeclTyped Type Identifier Expression
                      | VarDeclTypedUnitialized Type Identifier
                      | VarDeclUntypedUnitialized Identifier
                        deriving (Eq, Show)
-type VarDecl         = (VarDecl', Pos)
+type VarDecl         = (VarDecl', Meta)
 
 instance PrettyPrint VarDecl where
     prettyPrint (VarDeclTyped t i e, _) = prettyPrint t ++ " " ++ prettyPrint i ++ " = " ++ prettyPrint e ++ ";"
@@ -82,7 +92,7 @@ instance (ASTEq VarDecl) where
 data FunDecl'        = FunDeclTyped Identifier [Identifier] Type [Statement] -- [Identifier] are the arguments
                      | FunDeclUntyped Identifier [Identifier] [Statement]
                        deriving (Eq, Show)
-type FunDecl         = (FunDecl', Pos)
+type FunDecl         = (FunDecl', Meta)
 
 instance PrettyPrint FunDecl where
     prettyPrint (f, _) = case f of
@@ -117,7 +127,7 @@ data Type'           = TypeVoid
                      | TypePointer Type
                      | TypeFunction [Type] Type
                        deriving (Eq, Show)
-type Type            = (Type', Pos)
+type Type            = (Type', Meta)
 
 instance PrettyPrint Type where
     prettyPrint (TypeVoid, _) = "Void"
@@ -156,7 +166,7 @@ data Statement'      = StmtVarDecl VarDecl
                      | StmtReturn Expression
                      | StmtReturnVoid
                        deriving (Eq, Show)
-type Statement       = (Statement', Pos)
+type Statement       = (Statement', Meta)
 
 indentIfNotBlock :: Statement -> String
 indentIfNotBlock (StmtBlock s, p) = prettyPrint (StmtBlock s, p)
@@ -211,7 +221,7 @@ data Expression'     = ExprIdentifier Identifier
                      | ExprUnaryOp UnaryOperator Expression
                      | ExprBinaryOp BinaryOperator Expression Expression
                        deriving (Eq, Show)
-type Expression      = (Expression', Pos)
+type Expression      = (Expression', Meta)
 
 instance PrettyPrint Expression where
     prettyPrint (ExprIdentifier i, _) = prettyPrint i
@@ -260,7 +270,7 @@ data Constant'       = ConstBool Bool
                      | ConstChar Char
                      | ConstEmptyList
                        deriving (Eq, Show)
-type Constant        = (Constant', Pos)
+type Constant        = (Constant', Meta)
 
 instance PrettyPrint Constant where
     prettyPrint (ConstBool b, _) = show b
@@ -282,7 +292,7 @@ data UnaryOperator'  = UnaryOpNeg
                      | UnaryOpReference
                      | UnaryOpDereference
                        deriving (Eq, Show)
-type UnaryOperator   = (UnaryOperator', Pos)
+type UnaryOperator   = (UnaryOperator', Meta)
 
 instance PrettyPrint UnaryOperator where
     prettyPrint (UnaryOpNeg, _) = "!"
@@ -317,7 +327,7 @@ data BinaryOperator' = BinaryOpOr
                      | BinaryOpBitShiftLeft
                      | BinaryOpBitShiftRight
                        deriving (Eq, Show)
-type BinaryOperator  = (BinaryOperator', Pos)
+type BinaryOperator  = (BinaryOperator', Meta)
 
 instance PrettyPrint BinaryOperator where
     prettyPrint (BinaryOpOr, _) = "||"
@@ -350,7 +360,7 @@ data Field'          = FieldHd
                      | FieldFst
                      | FieldSnd
                        deriving (Eq, Show)
-type Field           = (Field', Pos)
+type Field           = (Field', Meta)
 
 instance PrettyPrint Field where
     prettyPrint (FieldHd, _) = ".hd"
@@ -363,7 +373,7 @@ instance (ASTEq Field) where
 
 newtype Identifier'  = Identifier String
                        deriving (Eq, Show)
-type Identifier      = (Identifier', Pos)
+type Identifier      = (Identifier', Meta)
 
 instance PrettyPrint Identifier where
     prettyPrint (Identifier i, _) = i
