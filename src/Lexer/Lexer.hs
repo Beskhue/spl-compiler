@@ -48,7 +48,7 @@ recognizers :: [RecognizerPriority]
 recognizers = [ -- End of file
                 constructRecognizer 20 "$" (\s -> TEOF),
                 -- Include statement
-                constructRecognizer 17 "#include \".*\"" (\s -> TInclude $ init $ drop (length "#include \"") s),
+                constructShortestRecognizer 17 "#include \".*\"" (\s -> TInclude $ init $ drop (length "#include \"") s),
                 -- Comments
                 constructShortestRecognizer 15 "/\\*.*\\*/" (\s -> TComment $ length $ filter (== '\n') s),
                 constructRecognizer 15 "//[^\r\n]*" (\s -> TComment 0),
