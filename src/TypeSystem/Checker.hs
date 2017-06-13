@@ -120,6 +120,13 @@ instance Types a => Types [a] where
     apply s = map (apply s)
     applyOnlyRename s = map (applyOnlyRename s)
 
+instance Types a => Types (Maybe a) where
+    freeTypeVars (Just m) = freeTypeVars m
+    apply _ Nothing = Nothing
+    apply s (Just m) = Just $ apply s m
+    applyOnlyRename _ Nothing = Nothing
+    applyOnlyRename s (Just m) = Just $ applyOnlyRename s m
+
 ------------------------------------------------------------------------------------------------------------------------
 
 -- |A substitution is a (finite) mapping from type variables to types
@@ -560,6 +567,9 @@ splitDeclsIncludes (decl:decls) =
 -- completely as possible.
 tInfSPL :: Bool -> TypeCtx -> AST.SPL -> TInf AST.SPL
 tInfSPL preserveDeclOrder includedCtx decls' = do
+    -- Assign fresh type vars to all types in the AST meta
+    decls' <- mapMeta metaAssignFreshTypeVar decls'
+    -- Split include declarations and regular declarations
     let (decls, includes) = splitDeclsIncludes decls'
     ctx <- ask
     let deps = tInfSPLGraph decls
@@ -579,7 +589,8 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
     spl <- local (const initCtx) (tInfSCCs decls sccDecls)
     s <- substitution
     st <- get
-    return $ includes ++ spl
+    final <- mapMeta (\m -> return $ m {AST.metaType = apply s (AST.metaType  m)}) (includes ++ spl)
+    return final
     where
         numberAscending :: [[AST.Decl]] -> [[(Int, AST.Decl)]]
         numberAscending = numberAscending' 0
@@ -979,19 +990,60 @@ rTranslateType (AST.TypeTuple t1 t2, _)     = TTuple (rTranslateType t1) (rTrans
 rTranslateType (AST.TypePointer t, _)       = TPointer $ rTranslateType t
 rTranslateType (AST.TypeFunction args t, _) = TFunction (map rTranslateType args) (rTranslateType t)
 
--- |Class to rewrite the AST with type substitutions
+-- |Assign fresh type var to meta
+metaAssignFreshTypeVar :: AST.Meta -> TInf AST.Meta
+metaAssignFreshTypeVar m = do
+    t <- newTypeVar "meta"
+    return m {AST.metaType = Just t}
+
+-- |Class to rewrite the AST with type information
 class RewriteAST a where
     rewrite :: Substitution -> a -> a
+    mapMeta :: (AST.Meta -> TInf AST.Meta) -> a -> TInf a
 
 instance RewriteAST a => RewriteAST [a] where
     rewrite s = map (rewrite s)
+    mapMeta f = mapM (mapMeta f)
 
 instance RewriteAST AST.Type where
     rewrite s (t, m) = translateType m $ apply s $ rTranslateType (t, m)
 
+    mapMeta f (AST.TypeTuple t1 t2, m) = do
+        m' <- f m
+        t1' <- mapMeta f t1
+        t2' <- mapMeta f t2
+        return (AST.TypeTuple t1' t2', m')
+    mapMeta f (AST.TypeList t, m) = do
+        m' <- f m
+        t' <- mapMeta f t
+        return (AST.TypeList t', m')
+    mapMeta f (AST.TypeIdentifier i, m) = do
+        m' <- f m
+        i' <- mapMeta f i
+        return (AST.TypeIdentifier i', m')
+    mapMeta f (AST.TypePointer t, m) = do
+        m' <- f m
+        t' <- mapMeta f t
+        return (AST.TypePointer t', m')
+    mapMeta f (AST.TypeFunction ts t, m) = do
+        m' <- f m
+        ts' <- mapMeta f ts
+        t' <- mapMeta f t
+        return (AST.TypeFunction ts' t', m')
+    mapMeta f (a, m) = f m >>= \m' -> return (a, m')
+
 instance RewriteAST AST.Decl where
     rewrite s (AST.DeclV v, m) = (AST.DeclV (rewrite s v), m)
     rewrite s (AST.DeclF f, m) = (AST.DeclF (rewrite s f), m)
+
+    mapMeta f (AST.DeclV v, m) = do
+        m' <- f m
+        v' <- mapMeta f v
+        return (AST.DeclV v', m')
+    mapMeta f (AST.DeclF fun, m) = do
+        m' <- f m
+        fun' <- mapMeta f fun
+        return (AST.DeclF fun', m')
 
 instance RewriteAST AST.VarDecl where
     rewrite s (AST.VarDeclTyped t i e, m) = (AST.VarDeclTyped (rewrite s t) (rewrite s i) (rewrite s e), m)
@@ -999,9 +1051,44 @@ instance RewriteAST AST.VarDecl where
     rewrite s (AST.VarDeclTypedUnitialized t i, m) = (AST.VarDeclTypedUnitialized (rewrite s t) (rewrite s i), m)
     rewrite s (AST.VarDeclUntypedUnitialized i, m) = (AST.VarDeclUntypedUnitialized (rewrite s i), m)
 
+    mapMeta f (AST.VarDeclTyped t i e, m) = do
+        m' <- f m
+        t' <- mapMeta f t
+        i' <- mapMeta f i
+        e' <- mapMeta f e
+        return (AST.VarDeclTyped t' i' e', m')
+    mapMeta f (AST.VarDeclUntyped i e, m) = do
+        m' <- f m
+        i' <- mapMeta f i
+        e' <- mapMeta f e
+        return (AST.VarDeclUntyped i' e', m')
+    mapMeta f (AST.VarDeclTypedUnitialized t i, m) = do
+        m' <- f m
+        t' <- mapMeta f t
+        i' <- mapMeta f i
+        return (AST.VarDeclTypedUnitialized t i', m')
+    mapMeta f (AST.VarDeclUntypedUnitialized i, m) = do
+        m' <- f m
+        i' <- mapMeta f i
+        return (AST.VarDeclUntypedUnitialized i', m')
+
 instance RewriteAST AST.FunDecl where
     rewrite s (AST.FunDeclTyped i is t ss, m) = (AST.FunDeclTyped (rewrite s i) (rewrite s is) (rewrite s t) (rewrite s ss), m)
     rewrite s (AST.FunDeclUntyped i is ss, m) = (AST.FunDeclUntyped (rewrite s i) (rewrite s is) (rewrite s ss), m)
+
+    mapMeta f (AST.FunDeclTyped i is t ss, m) = do
+        m' <- f m
+        i' <- mapMeta f i
+        is' <- mapMeta f is
+        t' <- mapMeta f t
+        ss' <- mapMeta f ss
+        return (AST.FunDeclTyped i' is' t' ss', m')
+    mapMeta f (AST.FunDeclUntyped i is ss, m) = do
+        m' <- f m
+        i' <- mapMeta f i
+        is' <- mapMeta f is
+        ss' <- mapMeta f ss
+        return (AST.FunDeclUntyped i' is' ss', m')
 
 instance RewriteAST AST.Statement where
     rewrite s (AST.StmtVarDecl v, m) = (AST.StmtVarDecl (rewrite s v), m)
@@ -1014,11 +1101,108 @@ instance RewriteAST AST.Statement where
     rewrite s (AST.StmtReturn e, m) = (AST.StmtReturn (rewrite s e), m)
     rewrite _ st = st
 
+    mapMeta f (AST.StmtVarDecl v, m) = do
+        m' <- f m
+        v' <- mapMeta f v
+        return (AST.StmtVarDecl v', m')
+    mapMeta f (AST.StmtIf e st, m) = do
+        m' <- f m
+        e' <- mapMeta f e
+        st' <- mapMeta f st
+        return (AST.StmtIf e' st', m')
+    mapMeta f (AST.StmtIfElse e st1 st2, m) = do
+        m' <- f m
+        e' <- mapMeta f e
+        st1' <- mapMeta f st1
+        st2' <- mapMeta f st2
+        return (AST.StmtIfElse e' st1' st2', m')
+    mapMeta f (AST.StmtWhile e st, m) = do
+        m' <- f m
+        e' <- mapMeta f e
+        st' <- mapMeta f st
+        return (AST.StmtWhile e' st', m')
+    mapMeta f (AST.StmtBlock sts, m) = do
+        m' <- f m
+        sts' <- mapMeta f sts
+        return (AST.StmtBlock sts', m')
+    mapMeta f (AST.StmtAssignment e1 e2, m) = do
+        m' <- f m
+        e1' <- mapMeta f e1
+        e2' <- mapMeta f e2
+        return (AST.StmtAssignment e1' e2', m')
+    mapMeta f (AST.StmtFunCall i es, m) = do
+        m' <- f m
+        i' <- mapMeta f i
+        es' <- mapMeta f es
+        return (AST.StmtFunCall i' es', m')
+    mapMeta f (AST.StmtReturn e, m) = do
+        m' <- f m
+        e' <- mapMeta f e
+        return (AST.StmtReturn e', m')
+
 instance RewriteAST AST.Field where
     rewrite _ f = f
+
+    mapMeta f (a, m) = f m >>= \m' -> return (a, m')
 
 instance RewriteAST AST.Expression where
     rewrite _ e = e
 
+    mapMeta f (AST.ExprIdentifier i, m) = do
+        m' <- f m
+        i' <- mapMeta f i
+        return (AST.ExprIdentifier i', m')
+    mapMeta f (AST.ExprField e fs, m) = do
+        m' <- f m
+        e' <- mapMeta f e
+        fs' <- mapMeta f fs
+        return (AST.ExprField e' fs', m')
+    mapMeta f (AST.ExprFunCall i es, m) = do
+        m' <- f m
+        i' <- mapMeta f i
+        es' <- mapMeta f es
+        return (AST.ExprFunCall i' es', m')
+    mapMeta f (AST.ExprConstant c, m) = do
+        m' <- f m
+        c' <- mapMeta f c
+        return (AST.ExprConstant c', m')
+    mapMeta f (AST.ExprTuple e1 e2, m) = do
+        m' <- f m
+        e1' <- mapMeta f e1
+        e2' <- mapMeta f e2
+        return (AST.ExprTuple e1' e2', m')
+    mapMeta f (AST.ExprUnaryOp op e, m) = do
+        m' <- f m
+        op' <- mapMeta f op
+        e' <- mapMeta f e
+        return (AST.ExprUnaryOp op' e', m')
+    mapMeta f (AST.ExprBinaryOp op e1 e2, m) = do
+        m' <- f m
+        op' <- mapMeta f op
+        e1' <- mapMeta f e1
+        e2' <- mapMeta f e2
+        return (AST.ExprBinaryOp op' e1' e2', m')
+
+instance RewriteAST AST.Constant where
+    rewrite = undefined
+
+    mapMeta f (AST.ConstBool b, m) = f m >>= \m' -> return (AST.ConstBool b, m')
+    mapMeta f (AST.ConstInt n, m) = f m >>= \m' -> return (AST.ConstInt n, m')
+    mapMeta f (AST.ConstChar c, m) = f m >>= \m' -> return (AST.ConstChar c, m')
+    mapMeta f (AST.ConstEmptyList, m) = f m >>= \m' -> return (AST.ConstEmptyList, m')
+
+instance RewriteAST AST.UnaryOperator where
+    rewrite = undefined
+
+    mapMeta f (AST.UnaryOpCast t, m) = f m >>= \m' -> return (AST.UnaryOpCast t, m')
+    mapMeta f (op, m) = f m >>= \m' -> return (op, m')
+
+instance RewriteAST AST.BinaryOperator where
+    rewrite = undefined
+
+    mapMeta f (op, m) = f m >>= \m' -> return (op, m')
+
 instance RewriteAST AST.Identifier where
     rewrite _ i = i
+
+    mapMeta f (i, m) = f m >>= \m' -> return (i, m')
