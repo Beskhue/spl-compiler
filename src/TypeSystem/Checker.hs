@@ -424,14 +424,16 @@ tInfExpr :: Type -> AST.Expression -> TInf ()
 tInfExpr t (AST.ExprIdentifier id, m) = do
     t' <- tInfId id
     void $ mgu m t t'
-tInfExpr t (AST.ExprField e fields, _) = do
+tInfExpr t (AST.ExprField e fields, m) = do
+    metaMGU m t
     t' <- newTypeVar "fld"
     tInfExpr t' e
     tTraverseFields Nothing t t' fields
-tInfExpr t (AST.ExprFunCall id args, m) = do
+tInfExpr t (AST.ExprFunCall id@(_, m') args, m) = do
+    metaMGU m t
     t1 <- tInfId id
     ts <- mapM (const $ newTypeVar "arg") args
-    mgu m (TFunction ts t) t1
+    mgu m' (TFunction ts t) t1
     tInfExprs ts args
 tInfExpr t (AST.ExprConstant const, _) = tInfConst t const
 tInfExpr t (AST.ExprTuple e1 e2, m) = do
@@ -440,8 +442,12 @@ tInfExpr t (AST.ExprTuple e1 e2, m) = do
     tInfExpr t1 e1
     tInfExpr t2 e2
     void $ mgu m t (TTuple t1 t2)
-tInfExpr t (AST.ExprUnaryOp op e, m) = tInfUnaryOp t op e
-tInfExpr t (AST.ExprBinaryOp op e1 e2, m) = tInfBinaryOp t op e1 e2
+tInfExpr t (AST.ExprUnaryOp op e, m) = do
+    metaMGU m t
+    tInfUnaryOp t op e
+tInfExpr t (AST.ExprBinaryOp op e1 e2, m) = do
+    metaMGU m t
+    tInfBinaryOp t op e1 e2
 
 tTraverseFields :: (Maybe AST.Meta) -> Type -> Type -> [AST.Field] -> TInf ()
 tTraverseFields (Just m) t t' [] = void $ mgu (m {AST.metaType = Nothing}) t t'
