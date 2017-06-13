@@ -341,10 +341,10 @@ genSPL decls = do
     local (const scopes') (liftM id (mapM genDecl (filter (\decl -> case decl of
         (AST.DeclF _, _) -> True
         _ -> False) decls)))
-    -- Add label to end of PC
-    push $ SSMLine (Just "__end_pc") (Just $ IControl CNop) Nothing
     -- Generate the built-in assembly library
     genLibrary
+    -- Add label to end of PC
+    push $ SSMLine (Just "__end_pc") (Just $ IControl CNop) Nothing
     -- Optimize and output generated SSM
     st <- get
     return $ optimize $ ssm st
