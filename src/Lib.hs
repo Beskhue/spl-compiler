@@ -23,6 +23,8 @@ compile = do
     let spl = concat a
     ssm <- eitherToRight $ SSM.gen spl
     putStrLn $ SSM.display ssm
+    writeFile "output/program.ssm" (SSM.display ssm)
+    putStrLn "Compiled to 'output/program.ssm'."
 
 prettyPrint :: IO ()
 prettyPrint = do
