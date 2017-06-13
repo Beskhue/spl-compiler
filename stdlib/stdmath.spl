@@ -1,0 +1,19 @@
+max(n1, n2)
+{
+    if (n1 >= n2) {
+        return n1;
+    } else {
+        return n2;
+    }
+}
+
+pow(n, p)
+{
+    var r = 1;
+    while(p > 0) {
+        r = r * n;
+        p = p - 1;
+    }
+    
+    return r;
+}
