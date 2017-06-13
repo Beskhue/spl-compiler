@@ -1126,6 +1126,9 @@ instance RewriteAST AST.Statement where
         m' <- f m
         e' <- mapMeta f e
         return (AST.StmtReturn e', m')
+    mapMeta f (AST.StmtReturnVoid, m) = do
+        m' <- f m
+        return (AST.StmtReturnVoid, m')
 
 instance RewriteAST AST.Field where
     rewrite _ f = f
