@@ -589,8 +589,8 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
     spl <- local (const initCtx) (tInfSCCs decls sccDecls)
     s <- substitution
     st <- get
-    final <- mapMeta (\m -> return $ m {AST.metaType = apply s (AST.metaType  m)}) (includes ++ spl)
-    return final
+    
+    mapMeta (\m -> return $ m {AST.metaType = apply s (AST.metaType  m)}) (includes ++ spl)
     where
         numberAscending :: [[AST.Decl]] -> [[(Int, AST.Decl)]]
         numberAscending = numberAscending' 0
