@@ -110,11 +110,19 @@ recognizers = [ -- End of file
                 constructRecognizer 1 "False" (\s -> TConstant $ CBool False),
                 constructRecognizer 1 "[0-9]+" (\s -> TConstant $ CInt (read s :: Int)),
                 constructRecognizer 1 "0x[0-9a-fA-F]+" (\s -> TConstant $ CInt (read s :: Int)), -- Hex
-                constructRecognizer 1 "'[^']'|'\\\\''" (\s -> TConstant $ CChar $ s !! (length s - 2)),
+                constructRecognizer 1 "'[^']'|'\\\\[^']'|'\\\\''" (\s ->
+                    if length s == 3
+                        then TConstant $ CChar $ s !! (length s - 2)
+                        else TConstant $ CChar $ escapeChar $ s !! (length s - 2)),
                 constructRecognizer 1 "\\[\\]" (\s -> TConstant CEmptyList),
                 -- Identifiers
                 constructRecognizer 0 "(\\w|_)(\\w|[_0-9])*" (\s -> TIdentifier s)
                ]
+
+escapeChar :: Char -> Char
+escapeChar 'r' = '\r'
+escapeChar 'n' = '\n'
+escapeChar 't' = '\t'
 
 {-
 Recognize an input string. Uses all input recognizers on the input string.
