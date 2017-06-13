@@ -142,20 +142,6 @@ composeSubstitution s1 s2 = Map.map (apply s1) s2 `Map.union` s1
 
 ------------------------------------------------------------------------------------------------------------------------
 
--- |The AST annotation is a (finite) mapping from source code positions (corresponding with entities at those positions)
--- to their types
-type ASTAnnotation = Map.Map Pos.Pos Type
-
-emptyAnnotation :: ASTAnnotation
-emptyAnnotation = Map.empty
-
-instance Types ASTAnnotation where
-    freeTypeVars = undefined
-    apply s m = Map.map (apply s) m
-    applyOnlyRename = undefined
-
-------------------------------------------------------------------------------------------------------------------------
-
 -- |A type context (or environment) is a mapping from term variables to type schemes
 newtype TypeCtx = TypeCtx (Map.Map String Scheme)
                   deriving (Show)
