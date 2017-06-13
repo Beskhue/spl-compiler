@@ -467,7 +467,6 @@ genExpression (AST.ExprFunCall i@(_,m) args, _) = do
     liftM id (mapM genExpression (reverse args))
     case Checker.idName i of
         "print" -> do
-            -- throwError $ (show m)
             case AST.metaType m of Just (Type.TFunction [t] _) -> genPrint t
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
         "isEmpty" -> do
