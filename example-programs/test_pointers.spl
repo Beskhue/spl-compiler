@@ -1,18 +1,28 @@
 main () {
     var a = (1, 'a') : (2, 'b') : [];
-    var b = &a;
-    //var cIllegal = &&a; // Not allowed, &a is not a persistent value
-    var c = &b;
-    var d = &*b; // Allowed! *b is a persistent value (as it is pointed to by b)
-    var e = *c;
+    var aPtr = &a;
+    //var aIllegalPtr = &&a; // Not allowed, &a is not a persistent value
+    var aPtrPtr = &aPtr;
+    var aPtr2 = &*aPtr; // Allowed! *aPtr is a persistent value (as it is pointed to by aPtr)
+    var aPtr3 = *aPtrPtr;
     
-    var f = **c;
-    print(f.tl.hd);
+    var a2 = **aPtrPtr;
+    print(a2.tl.hd);  // (2, 'b')
     
-    var g = &a.tl;
-    print(*g);
+    var tlPtr = &a.tl;
+    print(*tlPtr); // [(2, 'b')]
     
-    var h = ((2 : [], 'a'), (True : False : [], (1, 2)));
-    var i = &h.snd;
-    print(*i);
+    var c = ((2 : [], 'a'), (True : False : [], (1, 2)));
+    var cSndPtr = &c.snd;
+    print(*cSndPtr); // ([True, False], (1, 2))
+    (*cSndPtr).fst.tl.hd = True;
+    print((*cSndPtr).fst); // [True, True]
+    
+    var i = 1;
+    var iPtr = &i;
+    var iPtrPtr = &iPtr;
+    **iPtrPtr = 5;
+    print(i); // 5
+    print(*iPtr); // 5
+    print(**iPtrPtr); // 5
 }
