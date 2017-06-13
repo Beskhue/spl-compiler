@@ -331,6 +331,8 @@ genSPL decls = do
     scopes <- ask
     let scopes' = Stack.stackPush scopes (Map.fromList [(varDeclName, idx) | (idx, varDeclName) <- zip [0..] varDeclNames])
     local (const scopes') (liftM id (mapM genDecl varDecls))
+    --
+    genPushBackStack $ length varDecls
     -- First initialize the memory allocator
     genMallocInit
     -- Add a statement to branch to the main function
@@ -690,6 +692,14 @@ instance Locals AST.Statement where
 --------------------------------------------------------------------------------
 -- Built-in assembly library functions
 
+-- Push back the start of the stack
+genPushBackStack :: Int -> Gen ()
+genPushBackStack n = do
+    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RStackPointer) (Just $ "push back stack to make room for " ++ show n ++ " globals")
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber n) Nothing
+    push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+    push $ SSMLine Nothing (Just $ IStore $ SRegister $ ARegister RStackPointer) Nothing
+
 genLibrary :: Gen ()
 genLibrary = do
     genLength
@@ -728,7 +738,7 @@ genLength = do
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
 
 mAllocSmallestBlockSize :: Int
-mAllocSmallestBlockSize = 16     -- 2^4
+mAllocSmallestBlockSize = 1024     -- 2^10
 mAllocLargestBlockSize :: Int
 mAllocLargestBlockSize = 1048576 -- 2^20
 mAllocNumBlocks :: Int
