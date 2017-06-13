@@ -330,8 +330,9 @@ mgu m t1 t2 = do
     t <- substitute t1
     case AST.metaType m of
         Just t' -> do
-            mgu' (AST.metaPos m) t' t
-            return s
+            --s' <- mgu' (AST.metaPos m) t' t
+            s' <- metaMGU m t1'
+            return $ s' `composeSubstitution` s
         _ -> return s
     where
     mgu' :: Pos.Pos -> Type -> Type -> TInf Substitution
@@ -357,7 +358,7 @@ mgu m t1 t2 = do
 metaMGU :: AST.Meta -> Type -> TInf Substitution
 metaMGU m t2 =
     case AST.metaType m of
-        Just t1 -> mgu m t1 t2
+        Just t1 -> mgu (m {AST.metaType = Nothing}) t1 t2
         _ -> return nullSubstitution
 
 ------------------------------------------------------------------------------------------------------------------------
@@ -439,17 +440,11 @@ tInfExpr t (AST.ExprTuple e1 e2, m) = do
     tInfExpr t1 e1
     tInfExpr t2 e2
     void $ mgu m t (TTuple t1 t2)
-tInfExpr t (AST.ExprUnaryOp op e, m) = do
-    tInfUnaryOp t op e
-    t' <- substitute t
-    void $ metaMGU m t'
-tInfExpr t (AST.ExprBinaryOp op e1 e2, m) = do
-    tInfBinaryOp t op e1 e2
-    t' <- substitute t
-    void $ metaMGU m t'
+tInfExpr t (AST.ExprUnaryOp op e, m) = tInfUnaryOp t op e
+tInfExpr t (AST.ExprBinaryOp op e1 e2, m) = tInfBinaryOp t op e1 e2
 
 tTraverseFields :: (Maybe AST.Meta) -> Type -> Type -> [AST.Field] -> TInf ()
-tTraverseFields (Just m) t t' [] = void $ mgu m t t'
+tTraverseFields (Just m) t t' [] = void $ mgu (m {AST.metaType = Nothing}) t t'
 tTraverseFields _ t t' (field:fields) =
     case field of
         (AST.FieldHd, m) -> do
@@ -589,7 +584,7 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
     spl <- local (const initCtx) (tInfSCCs decls sccDecls)
     s <- substitution
     st <- get
-    
+
     mapMeta (\m -> return $ m {AST.metaType = apply s (AST.metaType  m)}) (includes ++ spl)
     where
         numberAscending :: [[AST.Decl]] -> [[(Int, AST.Decl)]]
@@ -787,7 +782,7 @@ tInfStatements t (statement@(_,m):statements) = do
                     s <- substitution
                     return (rewrite s statement : statements', True)
             else do
-                mgu m t tRemaining
+                mgu (m {AST.metaType = Nothing}) t tRemaining
                 s <- substitution
                 return (rewrite s statement' : statements', False)
         )
