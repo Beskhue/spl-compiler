@@ -88,10 +88,10 @@ __malloc(requestedMemory)
         var rightChildIndex = rightChild(index);
         
         if (
-            *(pTree &+ leftChildIndex) >= requestedMemory 
+            pTree[leftChildIndex] >= requestedMemory 
             && (
-                *(pTree &+ leftChildIndex) <= *(pTree &+ rightChildIndex)
-                || *(pTree &+ rightChildIndex) < requestedMemory
+                pTree[leftChildIndex] <= pTree[rightChildIndex]
+                || pTree[rightChildIndex] < requestedMemory
             )
         ) {
             index = leftChildIndex;
@@ -101,7 +101,7 @@ __malloc(requestedMemory)
     }
     
     // Allocate memory block; set longest available space to 0
-    *(pTree &+ index) = 0;
+    pTree[index] = 0;
     
     // Calculate start address of allocated memory block
     var pAddress = pTree &+ numNodes &+ (index + 1) * nodeSize - numFragments * sizePerFragment;
@@ -110,9 +110,9 @@ __malloc(requestedMemory)
     while ((Bool) index) {
         index = parent(index);
         
-        *(pTree &+ index) = max(
-            *(pTree &+ leftChild(index)),
-            *(pTree &+ rightChild(index)));
+        pTree[index] = max(
+            pTree[leftChild(index)],
+            pTree[rightChild(index)]);
     }
     
     return (Void*) pAddress;
@@ -145,25 +145,25 @@ free(ptr)
     
     // Iterate upwards until we find the index of the node with its longest 
     // size set to 0; that is the node we should be freeing
-    while (*(pTree &+ index) != 0) {
+    while (pTree[index] != 0) {
         nodeSize = nodeSize << 1;
         
         index = parent(index);
     }
     
-    *(pTree &+ index) = nodeSize;
+    pTree[index] = nodeSize;
     
     // Recursively attempt to re-merge buddy blocks
     while (index > 0) {
         index = parent(index);
         nodeSize = nodeSize << 1;
         
-        if (*(pTree &+ leftChild(index)) == *(pTree &+ rightChild(index))) {
-            *(pTree &+ index) = nodeSize;
+        if (pTree[leftChild(index)] == pTree[rightChild(index)]) {
+            pTree[index] = nodeSize;
         } else {
-            *(pTree &+ index) = max(
-                *(pTree &+ leftChild(index)),
-                *(pTree &+ rightChild(index)));
+            pTree[index] = max(
+                pTree[leftChild(index)],
+                pTree[rightChild(index)]);
         }
     }
 }
@@ -189,7 +189,7 @@ __malloc_init(_pTree,
     
     var index = 0;
     while(index < numNodes) {
-        *(pTree &+ index) = nodeSize;
+        pTree[index] = nodeSize;
         
         if (isPowerOf2(index+2)) {
             nodeSize = nodeSize / 2;
