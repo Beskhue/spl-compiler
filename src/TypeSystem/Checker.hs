@@ -1188,6 +1188,14 @@ instance RewriteAST AST.Expression where
         e1' <- mapMeta f e1
         e2' <- mapMeta f e2
         return (AST.ExprBinaryOp op' e1' e2', m')
+    mapMeta f (AST.ExprNew i, m) = do
+        m' <- f m
+        i' <- mapMeta f i
+        return (AST.ExprNew i', m')
+    mapMeta f (AST.ExprDelete e,  m) = do
+        m' <- f m
+        e' <- mapMeta f e
+        return (AST.ExprDelete e', m')
 
 instance RewriteAST AST.Constant where
     rewrite = undefined
