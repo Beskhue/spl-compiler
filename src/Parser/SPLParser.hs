@@ -119,7 +119,7 @@ pFunDecl = (do
                 tok (TPunctuator PFunType)
                 funType <- pFunType
                 tok (TPunctuator PBraceOpen)
-                statements <- many1 pStatement
+                statements <- many pStatement
                 tok (TPunctuator PBraceClose) <?> "a closing brace"
                 return (AST.FunDeclTyped (identifier, m) args funType statements, m)
             _ -> do
@@ -166,7 +166,7 @@ pFunType = (do
 
 pType :: Parser AST.Type
 pType = do
-    t <- pTypeBasic <|> pTypeTuple <|> pTypeList <|> pTypeIdentifier
+    t <- pTypeBasic <|> pTypeTuple <|> pTypeList <|> pTypeClass <|> pTypeIdentifier
     pType' t
     where
         pType' :: AST.Type -> Parser AST.Type
@@ -213,6 +213,11 @@ pTypeBasic = ((do
         TP _ p <- tok (TType Data.Token.TypeChar)
         return (AST.TypeChar, AST.metaFromPos p)
     )) <?> "a basic type (Void, Int, Bool, Char)"
+
+pTypeClass :: Parser AST.Type
+pTypeClass = (do
+    identifier@(_, m) <- pClassIdentifier
+    return (AST.TypeClass identifier, m)) <?> "a class"
 
 pTypeIdentifier :: Parser AST.Type
 pTypeIdentifier = (do
