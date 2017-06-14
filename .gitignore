@@ -1,3 +1,6 @@
+# Project-specific
+/output/
+
 # Haskell / cabal / stack / etc.
 dist
 dist-*
