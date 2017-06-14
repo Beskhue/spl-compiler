@@ -471,6 +471,10 @@ genExpression (AST.ExprFunCall i@(_,m) args, _) = do
         "print" -> do
             case AST.metaType m of Just (Type.TFunction [t] _) -> genPrint t
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
+        "println" -> do
+            case AST.metaType m of Just (Type.TFunction [t] _) -> genPrint t
+            genPrintChar '\n'
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
         "isEmpty" -> do
             -- Get next address of the list, if it is -1 the list is empty
             push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) (Just "start isEmpty")
