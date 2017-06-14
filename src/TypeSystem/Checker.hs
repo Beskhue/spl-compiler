@@ -548,6 +548,7 @@ splitDeclsIncludes (decl:decls) =
     let (decls', includes') = splitDeclsIncludes decls in
         case decl of
             d@(AST.DeclI _, _) -> (decls', d:includes')
+            d@(AST.DeclC _, _) -> (d:decls', includes')
             d@(AST.DeclV _, _) -> (d:decls', includes')
             d@(AST.DeclF _, _) -> (d:decls', includes')
 
@@ -856,8 +857,12 @@ class DeclIdentifier a where
     declIdentifier :: a -> String
 
 instance DeclIdentifier AST.Decl where
+    declIdentifier (AST.DeclC decl, _) = declIdentifier decl
     declIdentifier (AST.DeclV decl, _) = declIdentifier decl
     declIdentifier (AST.DeclF decl, _) = declIdentifier decl
+
+instance DeclIdentifier AST.ClassDecl where
+    declIdentifier (AST.ClassDecl i _ _, _) = idName i
 
 instance DeclIdentifier AST.VarDecl where
     declIdentifier (AST.VarDeclTyped _ i _, _) = idName i
