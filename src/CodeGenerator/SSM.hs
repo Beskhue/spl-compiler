@@ -437,8 +437,8 @@ genStatement (AST.StmtAssignment e1 e2, _) stmts = do
     genAddressOfExpression e1
     push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
     genStatements stmts
-genStatement (AST.StmtFunCall i args, p) stmts = do
-    genExpression (AST.ExprFunCall i args, p)
+genStatement (AST.StmtFunCall e args, p) stmts = do
+    genExpression (AST.ExprFunCall e args, p)
     -- Ignore return value
     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
     genStatements stmts
@@ -452,7 +452,7 @@ genStatement (AST.StmtReturnVoid, _) stmts = do
     genStatements stmts
 
 genExpression :: AST.Expression -> Gen ()
-genExpression (AST.ExprIdentifier i, p) = do
+genExpression (AST.ExprIdentifier i, m) = do
     location <- getVariable $ Checker.idName i
     case location of
         Just (SGlobal, offset) -> do -- Load a global
@@ -461,28 +461,30 @@ genExpression (AST.ExprIdentifier i, p) = do
             -- Load the value at the address of (the end of the program code + offset)
             push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber (endPCToStartStackOffset + offset)) Nothing
         Just (SLocal, offset) -> push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber offset) (Just $ "load local " ++ Checker.idName i)
-        Nothing -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
+        Nothing -> case AST.metaType m of
+            Just (TFunction _ _) -> push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel $ Checker.idName i) (Just $ "load address of function " ++ Checker.idName i)
+            _ -> throwError $ "Variable " ++ Checker.idName i ++ " not in scope"
 genExpression (AST.ExprField e f, _) = do
     genExpression e
     genFields f
-genExpression (AST.ExprFunCall i@(_,m) args, _) = do
+genExpression (AST.ExprFunCall expr@(e,m) args, _) = do
     liftM id (mapM genExpression (reverse args))
-    case Checker.idName i of
-        "print" -> do
-            case AST.metaType m of Just (Type.TFunction [t] _) -> genPrint t
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
-        "println" -> do
-            case AST.metaType m of Just (Type.TFunction [t] _) -> genPrint t
-            genPrintChar '\n'
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
-        "isEmpty" -> do
-            -- Get next address of the list, if it is -1 the list is empty
-            push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) (Just "start isEmpty")
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
-            push $ SSMLine Nothing (Just $ ICompute OEq) (Just "end isEmpty")
+    case e of
+        AST.ExprIdentifier (AST.Identifier "print", _) -> do
+                    case AST.metaType m of Just (Type.TFunction [t] _) -> genPrint t
+                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
+        AST.ExprIdentifier (AST.Identifier "println", _) -> do
+                    case AST.metaType m of Just (Type.TFunction [t] _) -> genPrint t
+                    genPrintChar '\n'
+                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
+        AST.ExprIdentifier (AST.Identifier "isEmpty", _) -> do
+                    -- Get next address of the list, if it is -1 the list is empty
+                    push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) (Just "start isEmpty")
+                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
+                    push $ SSMLine Nothing (Just $ ICompute OEq) (Just "end isEmpty")
         _ -> do
-            -- Jump to function
-            push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel $ Checker.idName i) Nothing
+            genExpression expr
+            push $ SSMLine Nothing (Just $ IControl $ CJumpSubroutine) Nothing
             -- Clean up stack
             push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ - length args) Nothing
             -- Load returned value
@@ -571,7 +573,7 @@ genFields fields = liftM id (mapM genField fields) >> return ()
         genField (AST.FieldSnd, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
 
 genAddressOfExpression :: AST.Expression -> Gen ()
-genAddressOfExpression (AST.ExprIdentifier i, p) = do
+genAddressOfExpression (AST.ExprIdentifier i, m) = do
     location <- getVariable $ Checker.idName i
     case location of
         Just (SGlobal, offset) -> do -- Load a global
@@ -742,7 +744,8 @@ genLength = do
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
 
 mAllocSmallestBlockSize :: Int
-mAllocSmallestBlockSize = 1024     -- 2^10
+--mAllocSmallestBlockSize = 1024     -- 2^10
+mAllocSmallestBlockSize = 524288
 mAllocLargestBlockSize :: Int
 mAllocLargestBlockSize = 1048576 -- 2^20
 mAllocNumBlocks :: Int

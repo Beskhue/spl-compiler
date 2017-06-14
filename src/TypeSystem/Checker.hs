@@ -58,8 +58,6 @@ typeInferenceExpr tInf' expr = res
 
 ------------------------------------------------------------------------------------------------------------------------
 
-------------------------------------------------------------------------------------------------------------------------
-
 data ValueType = PersistentValue
                | TemporaryValue
                  deriving (Show, Eq)
@@ -416,12 +414,14 @@ tInfExpr t (AST.ExprField e fields, m) = do
     t' <- newTypeVar "fld"
     tInfExpr t' e
     tTraverseFields Nothing t t' fields
-tInfExpr t (AST.ExprFunCall id@(_, m') args, m) = do
+tInfExpr t (AST.ExprFunCall e@(_, m') args, m) = do
     metaMGU m t
-    t1 <- tInfId id
-    ts <- mapM (const $ newTypeVar "arg") args
-    mgu m' (TFunction ts t) t1
-    tInfExprs ts args
+    case valueType e of
+        PersistentValue -> do
+            ts <- mapM (const $ newTypeVar "arg") args
+            tInfExpr (TFunction ts t) e
+            tInfExprs ts args
+        _ -> throwError $ TInfError TInfErrorPersistentValueRequired (AST.metaPos m)
 tInfExpr t (AST.ExprConstant const, _) = tInfConst t const
 tInfExpr t (AST.ExprTuple e1 e2, m) = do
     t1 <- newTypeVar "tuple"

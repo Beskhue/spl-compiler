@@ -269,10 +269,9 @@ pStatementBlock =
 
 pStatementFunCall :: Parser AST.Statement
 pStatementFunCall = do
-    (expr, m) <- pExpressionIdentifier
-    let AST.ExprFunCall identifier args = expr
+    (AST.ExprFunCall expr args, m) <- pExpression
     tok (TPunctuator PSeparator)
-    return (AST.StmtFunCall identifier args, m)
+    return (AST.StmtFunCall expr args, m)
     <?> "a function call"
 
 pStatementAssignment :: Parser AST.Statement
@@ -295,7 +294,16 @@ pStatementReturn = (do
         Nothing -> return (AST.StmtReturnVoid, AST.metaFromPos p)) <?> "a return statement"
 
 pExpression :: Parser AST.Expression
-pExpression = pExpression' 1
+pExpression = do
+    expr@(_, m) <- pExpression' 1
+    t <- pPeek
+    case t of
+        (TPunctuator PParenOpen) -> do
+            tok (TPunctuator PParenOpen)
+            args <- pFunArgs
+            tok (TPunctuator PParenClose) <?> "closing function call parenthesis"
+            return (AST.ExprFunCall expr args, m)
+        _ -> return expr
     where
         pExpression' :: Int -> Parser AST.Expression
         pExpression' 9          = pExprBase
@@ -354,14 +362,7 @@ pExprBase = do
 pExpressionIdentifier :: Parser AST.Expression
 pExpressionIdentifier = do
     (identifier, m) <- pIdentifier
-    t <- pPeek
-    case t of
-        (TPunctuator PParenOpen) -> do
-            tok (TPunctuator PParenOpen)
-            args <- pFunArgs
-            tok (TPunctuator PParenClose) <?> "closing function call parenthesis"
-            return (AST.ExprFunCall (identifier, m) args, m)
-        _ -> return (AST.ExprIdentifier (identifier, m), m)
+    return (AST.ExprIdentifier (identifier, m), m)
 
 pFunArgs :: Parser [AST.Expression]
 pFunArgs = (
