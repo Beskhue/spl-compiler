@@ -313,19 +313,29 @@ pExpression = pExpression' 1
 
 pExprBase :: Parser AST.Expression
 pExprBase = do
-     expr <- (
+    expr <- (
         try pExpressionUnaryOperator
          <|> pExprGroupOrTuple
          <|> pExpressionConst
          <|> pExpressionIdentifier <?> "a base expression")
-     pExprBase' expr
-     where
-         pExprBase' :: AST.Expression -> Parser AST.Expression
-         pExprBase' expr@(_, m) = do
-             field <- many pField
-             case field of
-                 [] -> return expr
-                 _ -> return (AST.ExprField expr field, m)
+    t <- pPeek
+    case t of
+        TPunctuator PSquareBracketOpen -> try (do
+            tokenP <- tok $ TPunctuator PSquareBracketOpen
+            let m' = AST.metaFromPos $ Data.Token.pos tokenP
+            expr' <- pExpression
+            tok $ TPunctuator PSquareBracketClose
+            pExprBase' (AST.ExprUnaryOp (AST.UnaryOpDereference, m')
+                       (AST.ExprBinaryOp (AST.BinaryOpReferencePlus, m') expr expr', m'), m')
+                ) <|> pExprBase' expr
+        _ -> pExprBase' expr
+    where
+        pExprBase' :: AST.Expression -> Parser AST.Expression
+        pExprBase' expr@(_, m) = do
+            field <- many pField
+            case field of
+                [] -> return expr
+                _ -> return (AST.ExprField expr field, m)
 
 pExpressionIdentifier :: Parser AST.Expression
 pExpressionIdentifier = do
