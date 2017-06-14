@@ -1,0 +1,200 @@
+/**
+ * A buddy memory allocator system.
+ * A tree object is held in memory that records the longest amount of memory
+ * still available under a block.
+ * 
+ * Based in part on:
+ * https://github.com/lotabout/buddy-system
+ */
+ 
+#include "stdlib/stdmath.spl"
+
+var pTree;
+var sizePerFragment;
+var numFragments;
+var numNodes;
+ 
+parent(index)
+{
+    return (index + 1) / 2 - 1;
+}
+
+leftChild(index)
+{
+    return index * 2 + 1;
+}
+
+rightChild(index)
+{
+    return index * 2 + 2;
+}
+
+isPowerOf2(index)
+{
+    return (index & (index - 1)) == 0;
+}
+
+fittingPowerOf2Exponent(n)
+{
+    n = n - 1;
+    
+    var order = 0;
+    while ((Bool) n) {
+        n = n >> 1;
+        order = order + 1;
+    }
+    
+    return order;
+}
+
+toFittingPowerOf2(n) {
+    var fittingPowerOf2Exponent = fittingPowerOf2Exponent(n);
+    
+    // Calculate power of 2
+    n = 1;
+    var i = 0;
+    while (i < fittingPowerOf2Exponent) {
+        i = i + 1;
+        n = n << 1;
+    }
+    
+    return n;
+}
+
+/**
+ * Allocate a block of memory.
+ *
+ * @param requestedMemory: the number of words to allocate
+ * @return a pointer to the start of the allocated memory block, or a null pointer if
+ * the requested memory could not be allocated.
+ */
+__malloc(requestedMemory)
+{
+    // Test if there is enough consequent available memory
+    if (*pTree < requestedMemory) {
+        return (Void*) -1;
+    }
+    
+    // Turn the requested memory into the smallest fitting power of two
+    requestedMemory = toFittingPowerOf2(requestedMemory);
+    
+    // Find the index of the block to allocate
+    var index = 0;
+    var nodeSize = sizePerFragment * numFragments;
+    while (nodeSize != requestedMemory) {
+        nodeSize = nodeSize / 2;
+        
+        var leftChildIndex = leftChild(index);
+        var rightChildIndex = rightChild(index);
+        
+        if (
+            *(pTree &+ leftChildIndex) >= requestedMemory 
+            && (
+                *(pTree &+ leftChildIndex) <= *(pTree &+ rightChildIndex)
+                || *(pTree &+ rightChildIndex) < requestedMemory
+            )
+        ) {
+            index = leftChildIndex;
+        } else {
+            index = rightChildIndex;
+        }
+    }
+    
+    // Allocate memory block; set longest available space to 0
+    *(pTree &+ index) = 0;
+    
+    // Calculate start address of allocated memory block
+    var pAddress = pTree &+ numNodes &+ (index + 1) * nodeSize - numFragments * sizePerFragment;
+    
+    // Update the tree with information about the longest available block
+    while ((Bool) index) {
+        index = parent(index);
+        
+        *(pTree &+ index) = max(
+            *(pTree &+ leftChild(index)),
+            *(pTree &+ rightChild(index)));
+    }
+    
+    return (Void*) pAddress;
+}
+
+/**
+ * Free a block of memory.
+ *
+ * @param ptr: The pointer to the block of memory to be freed.
+ */
+free(ptr)
+{
+    var offset = (Int) ptr - numNodes - (Int) pTree;
+   
+    var nodeSize = 1;
+    
+    // Find the index by starting from a non-existent, but consistent index
+    // of a tree node that is a child of the actual tree node whose index
+    // we are seeking
+    var index = offset + numFragments * sizePerFragment - 1;
+    
+    // Go the the "parent node" index until we are actually inside the tree
+    // range; at this point we have found a valid index of a tree node that
+    // is a child of the actual tree node whose index we are seeking
+    while (index >= numNodes) {
+        nodeSize = nodeSize << 1;
+        
+        index = parent(index);
+    }
+    
+    // Iterate upwards until we find the index of the node with its longest 
+    // size set to 0; that is the node we should be freeing
+    while (*(pTree &+ index) != 0) {
+        nodeSize = nodeSize << 1;
+        
+        index = parent(index);
+    }
+    
+    *(pTree &+ index) = nodeSize;
+    
+    // Recursively attempt to re-merge buddy blocks
+    while (index > 0) {
+        index = parent(index);
+        nodeSize = nodeSize << 1;
+        
+        if (*(pTree &+ leftChild(index)) == *(pTree &+ rightChild(index))) {
+            *(pTree &+ index) = nodeSize;
+        } else {
+            *(pTree &+ index) = max(
+                *(pTree &+ leftChild(index)),
+                *(pTree &+ rightChild(index)));
+        }
+    }
+}
+
+/**
+ * @param _pTree: pointer to the start of the heap; this will be the buddy tree pointer
+ * @param _sizePerFragment: the size per fragment in words
+ * @param _numFragments: the number of data fragments; must be a power of two
+ */
+__malloc_init(_pTree,
+              _sizePerFragment,
+              _numFragments)
+{
+    pTree = _pTree;
+    sizePerFragment = _sizePerFragment;
+    numFragments = _numFragments;
+    
+    // Todo: throw an exception if _numFragments is not a power of two
+    
+    // Initialize the buddy tree
+    numNodes = numFragments * 2 - 1; // The tree contains numFragments * 2 - 1 nodes
+    var nodeSize = _sizePerFragment * _numFragments;
+    
+    var index = 0;
+    while(index < numNodes) {
+        *(pTree &+ index) = nodeSize;
+        
+        if (isPowerOf2(index+2)) {
+            nodeSize = nodeSize / 2;
+        }
+        
+        index = index + 1;
+    }
+}
