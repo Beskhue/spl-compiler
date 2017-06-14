@@ -315,7 +315,6 @@ data UnaryOperator'  = UnaryOpNeg
                      | UnaryOpCast Type
                      | UnaryOpReference
                      | UnaryOpDereference
-                     | UnaryOpMember
                        deriving (Eq, Show)
 type UnaryOperator   = (UnaryOperator', Meta)
 
@@ -351,6 +350,7 @@ data BinaryOperator' = BinaryOpOr
                      | BinaryOpMod
                      | BinaryOpBitShiftLeft
                      | BinaryOpBitShiftRight
+                     | BinaryOpMember
                        deriving (Eq, Show)
 type BinaryOperator  = (BinaryOperator', Meta)
 
@@ -376,6 +376,7 @@ instance PrettyPrint BinaryOperator where
     prettyPrint (BinaryOpMod, _) = "%"
     prettyPrint (BinaryOpBitShiftLeft, _) = "<<"
     prettyPrint (BinaryOpBitShiftRight, _) = ">>"
+    prettyPrint (BinaryOpMember, _) = "."
 
 instance (ASTEq BinaryOperator) where
     astEq (bOp1, _) (bOp2, _) = bOp1 == bOp2
@@ -428,6 +429,7 @@ binaryOperatorPrecedence' BinaryOpDiv = 7
 binaryOperatorPrecedence' BinaryOpMod = 7
 binaryOperatorPrecedence' BinaryOpBitShiftLeft = 5
 binaryOperatorPrecedence' BinaryOpBitShiftRight = 5
+binaryOperatorPrecedence' BinaryOpMember = 8
 
 binaryOperatorPrecedence :: BinaryOperator -> Int
 binaryOperatorPrecedence (bOp, _) = binaryOperatorPrecedence' bOp
@@ -457,6 +459,7 @@ binaryOperatorAssociativity' BinaryOpDiv = ALeft
 binaryOperatorAssociativity' BinaryOpMod = ALeft
 binaryOperatorAssociativity' BinaryOpBitShiftLeft = ALeft
 binaryOperatorAssociativity' BinaryOpBitShiftRight = ALeft
+binaryOperatorAssociativity' BinaryOpMember = ALeft
 
 binaryOperatorAssociativity :: BinaryOperator -> Associativity
 binaryOperatorAssociativity (bOp, _) = binaryOperatorAssociativity' bOp

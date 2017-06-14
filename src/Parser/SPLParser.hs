@@ -298,7 +298,7 @@ pExpression :: Parser AST.Expression
 pExpression = pExpression' 1
     where
         pExpression' :: Int -> Parser AST.Expression
-        pExpression' 8          = pExprBase
+        pExpression' 9          = pExprBase
         pExpression' precedence = do {
             (expr, m) <- pExpression' (precedence + 1); (do
                 binaryOperator <- try (lookAhead pBinaryOperator)
