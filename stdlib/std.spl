@@ -1,7 +1,7 @@
 #include "stdlib/stdmath.spl"
 #include "stdlib/buddyallocator.spl"
 
-printHex(n) :: Int -> Void
+printHex(n) :: Int -> Bool
 {
     print('0');
     print('x');
@@ -17,5 +17,7 @@ printHex(n) :: Int -> Void
         }
         
         i = i + 1;
-    } 
+    }
+    
+    return True;
 }
