@@ -124,7 +124,7 @@ pFunDecl = (do
                 return (AST.FunDeclTyped (identifier, m) args funType statements, m)
             _ -> do
                 tok (TPunctuator PBraceOpen)
-                statements <- many1 pStatement
+                statements <- many pStatement
                 tok (TPunctuator PBraceClose) <?> "a closing brace"
                 return (AST.FunDeclUntyped (identifier, m) args statements, m)
     ) <?> "a function declaration"
