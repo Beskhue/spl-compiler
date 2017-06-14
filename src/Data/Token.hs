@@ -13,6 +13,7 @@ import Data.Pos
 
 data Token = TKeyword Keyword
            | TIdentifier Identifier
+           | TClassIdentifier Identifier
            | TConstant Constant
            | TType Type
            | TOperator Operator

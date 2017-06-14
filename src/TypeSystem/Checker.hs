@@ -86,6 +86,8 @@ instance Types Type where
     freeTypeVars (TFunction args body) = Set.union (freeTypeVars args) (freeTypeVars body)
     freeTypeVars (TPointer t) = freeTypeVars t
     freeTypeVars TVoid = Set.empty
+    freeTypeVars TType = Set.empty
+    freeTypeVars (TClass _) = Set.empty
 
     apply s (TVar v) =
         case Map.lookup v s of
@@ -338,6 +340,10 @@ mgu m t1 t2 = do
         return $ s2 `composeSubstitution` s1
     mgu' p (TPointer t) (TPointer t') = mgu' p t t'
     mgu' p TVoid TVoid                = return nullSubstitution
+    mgu' p TType TType                = return nullSubstitution
+    mgu' p t1@(TClass i) t2@(TClass i')      = if i == i'
+        then return nullSubstitution
+        else throwError $ TInfError (TInfErrorUnify t1 t2) p
     mgu' p t1 t2                      = throwError $ TInfError (TInfErrorUnify t1 t2) p
 
 metaMGU :: AST.Meta -> Type -> TInf Substitution
@@ -351,6 +357,9 @@ metaMGU m t2 =
 -- |Get the name of an AST identifier
 idName :: AST.Identifier -> String
 idName (AST.Identifier i, _) = i
+
+classIDName :: AST.ClassIdentifier -> String
+classIDName (AST.ClassIdentifier i, _) = i
 
 getScheme :: Pos.Pos -> String -> TInf Scheme
 getScheme p varName = do
@@ -387,6 +396,9 @@ tInfVarName p varName = do
 -- |Perform type inference on an AST identifier
 tInfId :: AST.Identifier -> TInf Type
 tInfId i@(_, m) = tInfVarName (AST.metaPos m) (idName i)
+
+tInfClassId :: AST.ClassIdentifier -> TInf Type
+tInfClassId i@(_, m) = tInfVarName (AST.metaPos m) (classIDName i)
 
 -- |Perform type inference on an AST constant
 tInfConst :: Type -> AST.Constant -> TInf ()
@@ -435,6 +447,10 @@ tInfExpr t (AST.ExprUnaryOp op e, m) = do
 tInfExpr t (AST.ExprBinaryOp op e1 e2, m) = do
     metaMGU m t
     tInfBinaryOp t op e1 e2
+tInfExpr t (AST.ExprNew i@(_, m'), m) = do
+    t' <- tInfClassId i
+    mgu m' t' TType
+    void $ mgu m t (TClass $ classIDName i)
 
 tTraverseFields :: (Maybe AST.Meta) -> Type -> Type -> [AST.Field] -> TInf ()
 tTraverseFields (Just m) t t' [] = void $ mgu (m {AST.metaType = Nothing}) t t'
@@ -593,6 +609,7 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
             typeVar <- newTypeVar "global" -- Create a (temporary) new type var for this global
             ctx' <- addGlobalsToCtx ctx decls
             case decl of
+                (AST.DeclC (AST.ClassDecl i _ _, _), _) -> return $ add ctx' (classIDName i) (Scheme [] typeVar)
                 (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
                 (AST.DeclV (AST.VarDeclUntyped i _, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
                 (AST.DeclV (AST.VarDeclTypedUnitialized _ i, _), _) -> return $ add ctx' (idName i) (Scheme [] typeVar)
@@ -602,6 +619,7 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
         addGlobalToCtx :: ScopedTypeCtx -> AST.Decl -> Type -> TInf ScopedTypeCtx
         addGlobalToCtx ctx decl t =
             case decl of
+                (AST.DeclC (AST.ClassDecl i _ _, _), _) -> return $ add ctx (classIDName i) (Scheme [] t)
                 (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> return $ add ctx (idName i) (Scheme [] t)
                 (AST.DeclV (AST.VarDeclUntyped i _, _), _) -> return $ add ctx (idName i) (Scheme [] t)
                 (AST.DeclV (AST.VarDeclTypedUnitialized _ i, _), _) -> return $ add ctx (idName i) (Scheme [] t)
@@ -657,12 +675,20 @@ tInfSPLGraph decls =
         map (\decl -> (decl, declIdentifier decl, snd $ dependencies globalVars decl)) decls
 
 tInfDecl :: Type -> AST.Decl -> TInf (AST.Decl, String)
+tInfDecl t (AST.DeclC decl, m) = do
+    (decl', varName) <- tInfClassDecl t decl
+    return ((AST.DeclC decl', m), varName)
 tInfDecl t (AST.DeclV decl, m) = do
     (decl', varName) <- tInfVarDecl t decl
     return ((AST.DeclV decl', m), varName)
 tInfDecl t (AST.DeclF decl, m) = do
     (decl', varName) <- tInfFunDecl t decl
     return ((AST.DeclF decl', m), varName)
+
+tInfClassDecl :: Type -> AST.ClassDecl -> TInf (AST.ClassDecl, String)
+tInfClassDecl t decl@(AST.ClassDecl i vs fs, m) = do
+    mgu m t TType
+    return (decl, classIDName i)
 
 tInfVarDecl :: Type -> AST.VarDecl -> TInf (AST.VarDecl, String)
 tInfVarDecl t decl =
@@ -862,7 +888,7 @@ instance DeclIdentifier AST.Decl where
     declIdentifier (AST.DeclF decl, _) = declIdentifier decl
 
 instance DeclIdentifier AST.ClassDecl where
-    declIdentifier (AST.ClassDecl i _ _, _) = idName i
+    declIdentifier (AST.ClassDecl i _ _, _) = classIDName i
 
 instance DeclIdentifier AST.VarDecl where
     declIdentifier (AST.VarDeclTyped _ i _, _) = idName i
@@ -885,8 +911,15 @@ instance Dependencies a => Dependencies [a] where
                 (globalDefs'', deps ++ deps')
 
 instance Dependencies AST.Decl where
+    dependencies globalDefs (AST.DeclC decl, _) = dependencies globalDefs decl
     dependencies globalDefs (AST.DeclV decl, _) = dependencies globalDefs decl
     dependencies globalDefs (AST.DeclF decl, _) = dependencies globalDefs decl
+
+instance Dependencies AST.ClassDecl where
+    dependencies globalDefs (AST.ClassDecl i vs fs, _) =
+        let (_, deps) = dependencies globalDefs vs in
+            let (_, deps') = dependencies globalDefs fs in
+                (globalDefs, deps ++ deps')
 
 instance Dependencies AST.VarDecl where
     dependencies globalDefs (AST.VarDeclTyped _ i e, _) =
@@ -952,9 +985,17 @@ instance Dependencies AST.Expression where
         let (_, deps) = dependencies globalDefs e1 in
             let (_, deps') = dependencies globalDefs e2 in
                 (globalDefs, deps ++ deps')
+    dependencies globalDefs (AST.ExprNew i, _) = dependencies globalDefs i
+    dependencies globalDefs (AST.ExprDelete e, _) = dependencies globalDefs e
 
 instance Dependencies AST.Identifier where
     dependencies globalDefs (AST.Identifier i, _) =
+        if i `elem` globalDefs
+            then (globalDefs, [i])
+            else (globalDefs, [])
+
+instance Dependencies AST.ClassIdentifier where
+    dependencies globalDefs (AST.ClassIdentifier i, _) =
         if i `elem` globalDefs
             then (globalDefs, [i])
             else (globalDefs, [])
@@ -971,6 +1012,8 @@ translateType m (TList t)          = (AST.TypeList $ translateType m t, m)
 translateType m (TTuple t1 t2)     = (AST.TypeTuple (translateType m t1) (translateType m t2), m)
 translateType m (TPointer t)       = (AST.TypePointer $ translateType m t, m)
 translateType m (TFunction args t) = (AST.TypeFunction (map (translateType m) args) (translateType m t), m)
+translateType m TType              = (AST.TypeType, m)
+translateType m (TClass str)       = (AST.TypeClass (AST.ClassIdentifier str, m), m)
 
 rTranslateType :: AST.Type -> Type
 rTranslateType (AST.TypeIdentifier id, _)   = TVar $ idName id
@@ -982,6 +1025,8 @@ rTranslateType (AST.TypeList t, _)          = TList $ rTranslateType t
 rTranslateType (AST.TypeTuple t1 t2, _)     = TTuple (rTranslateType t1) (rTranslateType t2)
 rTranslateType (AST.TypePointer t, _)       = TPointer $ rTranslateType t
 rTranslateType (AST.TypeFunction args t, _) = TFunction (map rTranslateType args) (rTranslateType t)
+rTranslateType (AST.TypeType, _)            = TType
+rTranslateType (AST.TypeClass i, _)         = TClass $ classIDName i
 
 -- |Assign fresh type var to meta
 metaAssignFreshTypeVar :: AST.Meta -> TInf AST.Meta
@@ -1222,6 +1267,11 @@ instance RewriteAST AST.BinaryOperator where
     mapMeta f (op, m) = f m >>= \m' -> return (op, m')
 
 instance RewriteAST AST.Identifier where
+    rewrite _ i = i
+
+    mapMeta f (i, m) = f m >>= \m' -> return (i, m')
+
+instance RewriteAST AST.ClassIdentifier where
     rewrite _ i = i
 
     mapMeta f (i, m) = f m >>= \m' -> return (i, m')

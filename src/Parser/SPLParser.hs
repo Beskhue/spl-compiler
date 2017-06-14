@@ -132,12 +132,12 @@ pFunDecl = (do
 pClassDecl :: Parser AST.ClassDecl
 pClassDecl = do
     tok $ TKeyword KClass
-    identifier@(_, m) <- pIdentifier
+    classIdentifier@(_, m) <- pClassIdentifier
     tok $ TPunctuator PBraceOpen
     varDecls <- many $ try pVarDecl
     funDecls <- many pFunDecl
     tok $ TPunctuator PBraceClose
-    return (AST.ClassDecl identifier varDecls funDecls, m)
+    return (AST.ClassDecl classIdentifier varDecls funDecls, m)
 
 pFunArgsDef :: Parser [AST.Identifier]
 pFunArgsDef = (
@@ -409,8 +409,8 @@ pExprGroupOrTuple = do
 pExpressionClass :: Parser AST.Expression
 pExpressionClass = (do
         tokenP <- tok $ TKeyword KNew
-        identifier <- pIdentifier
-        return (AST.ExprNew identifier, AST.metaFromPos $ Data.Token.pos tokenP))
+        classIdentifier <- pClassIdentifier
+        return (AST.ExprNew classIdentifier, AST.metaFromPos $ Data.Token.pos tokenP))
     <|> (do
         tokenP <- tok $ TKeyword KDelete
         expr <- pExpression
@@ -501,6 +501,14 @@ pIdentifier = tokenPrim show advance
             TP (TIdentifier identifier) p -> Just (AST.Identifier identifier, AST.metaFromPos p)
             _ -> Nothing
     ) <?> "an identifier"
+
+pClassIdentifier :: Parser AST.ClassIdentifier
+pClassIdentifier = tokenPrim show advance
+    (
+        \tp -> case tp of
+            TP (TClassIdentifier identifier) p -> Just (AST.ClassIdentifier identifier, AST.metaFromPos p)
+            _ -> Nothing
+    ) <?> "a class identifier"
 
 pSeparator :: Parser TokenP
 pSeparator = tok (TPunctuator PSeparator)

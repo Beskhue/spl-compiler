@@ -72,7 +72,7 @@ instance PrettyPrint IncludeDecl where
 instance (ASTEq IncludeDecl) where
     astEq (IncludeDecl s1, _) (IncludeDecl s2, _) = s1 == s2
 
-data ClassDecl'      = ClassDecl Identifier [VarDecl] [FunDecl]
+data ClassDecl'      = ClassDecl ClassIdentifier [VarDecl] [FunDecl]
                        deriving (Eq, Show)
 type ClassDecl       = (ClassDecl', Meta)
 
@@ -143,7 +143,8 @@ data Type'           = TypeVoid
                      | TypeIdentifier Identifier
                      | TypePointer Type
                      | TypeFunction [Type] Type
-                     | TypeClass Identifier
+                     | TypeType
+                     | TypeClass ClassIdentifier
                        deriving (Eq, Show)
 type Type            = (Type', Meta)
 
@@ -161,6 +162,8 @@ instance PrettyPrint Type where
             printArgsTypes :: [Type] -> String
             printArgsTypes [] = ""
             printArgsTypes (arg:args) = prettyPrint arg ++ " " ++ printArgsTypes args
+    prettyPrint (TypeType, _) = "Type"
+    prettyPrint (TypeClass i, _) = prettyPrint i
 
 instance (ASTEq Type) where
     astEq (TypeVoid, _) (TypeVoid, _) = True
@@ -172,6 +175,8 @@ instance (ASTEq Type) where
     astEq (TypeIdentifier i1, _) (TypeIdentifier i2, _) = astEq i1 i2
     astEq (TypePointer t1, _) (TypePointer t2, _) = astEq t1 t2
     astEq (TypeFunction ts1 t1, _) (TypeFunction ts2 t2, _) = astEq ts1 ts2 && astEq t1 t2
+    astEq (TypeType, _) (TypeType, _) = True
+    astEq (TypeClass i1, _) (TypeClass i2, _) = astEq i1 i2
     astEq _ _ = False
 
 data Statement'      = StmtVarDecl VarDecl
@@ -238,7 +243,7 @@ data Expression'     = ExprIdentifier Identifier
                      | ExprTuple Expression Expression
                      | ExprUnaryOp UnaryOperator Expression
                      | ExprBinaryOp BinaryOperator Expression Expression
-                     | ExprNew Identifier
+                     | ExprNew ClassIdentifier
                      | ExprDelete Expression
                        deriving (Eq, Show)
 type Expression      = (Expression', Meta)
@@ -406,6 +411,16 @@ instance PrettyPrint Identifier where
 
 instance (ASTEq Identifier) where
     astEq (Identifier s1, _) (Identifier s2, _) = s1 == s2
+
+newtype ClassIdentifier' = ClassIdentifier String
+                           deriving (Eq, Show)
+type ClassIdentifier     = (ClassIdentifier', Meta)
+
+instance PrettyPrint ClassIdentifier where
+    prettyPrint (ClassIdentifier i, _) = i
+
+instance ASTEq ClassIdentifier where
+    astEq (ClassIdentifier s1, _) (ClassIdentifier s2, _) = s1 == s2
 
 binaryOperatorPrecedence' :: BinaryOperator' -> Int
 binaryOperatorPrecedence' BinaryOpOr = 1

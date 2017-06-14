@@ -2,6 +2,7 @@
 
 module Lexer.Lexer where
 
+import qualified Data.Char as Char
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Trans.State.Lazy
@@ -120,7 +121,9 @@ recognizers = [ -- End of file
                         else TConstant $ CChar $ escapeChar $ s !! (length s - 2)),
                 constructRecognizer 1 "\\[\\]" (\s -> TConstant CEmptyList),
                 -- Identifiers
-                constructRecognizer 0 "(\\w|_)(\\w|[_0-9])*" (\s -> TIdentifier s)
+                constructRecognizer 0 "(\\w|_)(\\w|[_0-9])*" (\s -> if Char.isUpper $ s!!0
+                    then TClassIdentifier s
+                    else TIdentifier s)
                ]
 
 escapeChar :: Char -> Char
