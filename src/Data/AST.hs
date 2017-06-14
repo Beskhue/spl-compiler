@@ -15,7 +15,7 @@ class ASTEq a where
 type SPL             = [Decl]
 
 data Meta = Meta {metaPos :: Pos, metaType :: Maybe Type.Type}
-            deriving (Eq, Show)
+            deriving (Ord, Eq, Show)
 
 metaFromPos :: Pos -> Meta
 metaFromPos p = Meta {metaPos = p, metaType = Nothing}
@@ -245,6 +245,7 @@ data Expression'     = ExprIdentifier Identifier
                      | ExprBinaryOp BinaryOperator Expression Expression
                      | ExprNew ClassIdentifier
                      | ExprDelete Expression
+                     | ExprClassMember Expression Identifier
                        deriving (Eq, Show)
 type Expression      = (Expression', Meta)
 
@@ -281,6 +282,7 @@ instance PrettyPrint Expression where
                 _ -> prettyPrint e
     prettyPrint (ExprNew i, _) = "new " ++ prettyPrint i
     prettyPrint (ExprDelete i, _) = "delete " ++ prettyPrint i
+    prettyPrint (ExprClassMember e i, _) = prettyPrint e ++ "." ++ prettyPrint i
 
 instance (ASTEq Expression) where
     astEq (ExprIdentifier i1, _) (ExprIdentifier i2, _) = astEq i1 i2
@@ -292,6 +294,7 @@ instance (ASTEq Expression) where
     astEq (ExprBinaryOp bOp1 e1 e1', _) (ExprBinaryOp bOp2 e2 e2', _) = astEq bOp1 bOp2 && astEq e1 e2 && astEq e1' e2'
     astEq (ExprNew i1, _) (ExprNew i2, _) = astEq i1 i2
     astEq (ExprDelete i1, _) (ExprDelete i2, _) = astEq i1 i2
+    astEq (ExprClassMember e1 i1, _) (ExprClassMember e2 i2, _) = astEq e1 e2 && astEq i1 i2
     astEq _ _ = False
 
 data Constant'       = ConstBool Bool
@@ -355,7 +358,6 @@ data BinaryOperator' = BinaryOpOr
                      | BinaryOpMod
                      | BinaryOpBitShiftLeft
                      | BinaryOpBitShiftRight
-                     | BinaryOpMember
                        deriving (Eq, Show)
 type BinaryOperator  = (BinaryOperator', Meta)
 
@@ -381,7 +383,6 @@ instance PrettyPrint BinaryOperator where
     prettyPrint (BinaryOpMod, _) = "%"
     prettyPrint (BinaryOpBitShiftLeft, _) = "<<"
     prettyPrint (BinaryOpBitShiftRight, _) = ">>"
-    prettyPrint (BinaryOpMember, _) = "."
 
 instance (ASTEq BinaryOperator) where
     astEq (bOp1, _) (bOp2, _) = bOp1 == bOp2
@@ -403,7 +404,7 @@ instance (ASTEq Field) where
     astEq (f1, _) (f2, _) = f1 == f2
 
 newtype Identifier'  = Identifier String
-                       deriving (Eq, Show)
+                       deriving (Ord, Eq, Show)
 type Identifier      = (Identifier', Meta)
 
 instance PrettyPrint Identifier where
@@ -413,7 +414,7 @@ instance (ASTEq Identifier) where
     astEq (Identifier s1, _) (Identifier s2, _) = s1 == s2
 
 newtype ClassIdentifier' = ClassIdentifier String
-                           deriving (Eq, Show)
+                           deriving (Ord, Eq, Show)
 type ClassIdentifier     = (ClassIdentifier', Meta)
 
 instance PrettyPrint ClassIdentifier where
@@ -444,7 +445,6 @@ binaryOperatorPrecedence' BinaryOpDiv = 7
 binaryOperatorPrecedence' BinaryOpMod = 7
 binaryOperatorPrecedence' BinaryOpBitShiftLeft = 5
 binaryOperatorPrecedence' BinaryOpBitShiftRight = 5
-binaryOperatorPrecedence' BinaryOpMember = 8
 
 binaryOperatorPrecedence :: BinaryOperator -> Int
 binaryOperatorPrecedence (bOp, _) = binaryOperatorPrecedence' bOp
@@ -474,7 +474,6 @@ binaryOperatorAssociativity' BinaryOpDiv = ALeft
 binaryOperatorAssociativity' BinaryOpMod = ALeft
 binaryOperatorAssociativity' BinaryOpBitShiftLeft = ALeft
 binaryOperatorAssociativity' BinaryOpBitShiftRight = ALeft
-binaryOperatorAssociativity' BinaryOpMember = ALeft
 
 binaryOperatorAssociativity :: BinaryOperator -> Associativity
 binaryOperatorAssociativity (bOp, _) = binaryOperatorAssociativity' bOp

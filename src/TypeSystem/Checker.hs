@@ -225,6 +225,7 @@ data TInfError' = TInfErrorUnify Type Type
                 | TInfErrorUnboundVariable String
                 | TInfErrorVariableMultiplyDefined String
                 | TInfErrorPersistentValueRequired
+                | TInfErrorGeneric String
 
 data TInfError = TInfError TInfError' Pos.Pos
 
@@ -251,10 +252,15 @@ instance Show TInfError' where
     show (TInfErrorUnboundVariable s) = "Undefined variable: " ++ s
     show (TInfErrorVariableMultiplyDefined s) = "Variable multiply defined in scope: " ++ s
     show TInfErrorPersistentValueRequired = "Persistent value required for reference (&) operand"
+    show (TInfErrorGeneric s) = "An error occurred: " ++ s
+
+-- Create a map from identifiers to the class they belong to and their original identifiers
+type FunctionClassMap = Map.Map AST.Identifier (AST.ClassIdentifier, AST.Identifier)
 
 -- |The type inference state consists of the fresh type name generator state and the current type substitution
 data TInfState = TInfState { tInfSupply :: Int,
-                             tInfSubstitution :: Substitution}
+                             tInfSubstitution :: Substitution,
+                             tInfFunctionClassMap :: FunctionClassMap }
                  deriving (Show)
 
 type TInf a = ExceptT TInfError (ReaderT ScopedTypeCtx (State TInfState)) a
@@ -267,7 +273,8 @@ runTInf t = runState (runReaderT (runExceptT t) initTInfCtx) initTInfState
     where
         initTInfCtx = emptyScopedCtx
         initTInfState = TInfState { tInfSupply = 0,
-                                    tInfSubstitution = Map.empty}
+                                    tInfSubstitution = Map.empty,
+                                    tInfFunctionClassMap = Map.empty}
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -294,6 +301,25 @@ instantiate (Scheme vars t) = do
     newVars <- mapM (\_ -> newTypeVar "a") vars
     let s = Map.fromList (zip vars newVars)
     return $ apply s t
+
+------------------------------------------------------------------------------------------------------------------------
+
+functionClassMap :: TInf FunctionClassMap
+functionClassMap = do
+    s <- get
+    return $ tInfFunctionClassMap s
+
+setFunctionClass :: AST.Identifier -> (AST.ClassIdentifier, AST.Identifier) -> TInf ()
+setFunctionClass i clss = do
+    m <- functionClassMap
+    let m' = Map.insert i clss m
+    s <- get
+    put s {tInfFunctionClassMap = m'}
+
+getFunctionClass :: AST.Identifier -> TInf (Maybe (AST.ClassIdentifier, AST.Identifier))
+getFunctionClass i = do
+    m <- functionClassMap
+    return $ Map.lookup i m
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -451,6 +477,11 @@ tInfExpr t (AST.ExprNew i@(_, m'), m) = do
     t' <- tInfClassId i
     mgu m' t' TType
     void $ mgu m t (TClass $ classIDName i)
+tInfExpr t (AST.ExprClassMember e i, m)= do
+    t' <- newTypeVar "class"
+    tInfExpr t' e
+    t'' <- substitute t'
+    throwError $ TInfError (TInfErrorGeneric $ show t'') (AST.metaPos m)
 
 tTraverseFields :: (Maybe AST.Meta) -> Type -> Type -> [AST.Field] -> TInf ()
 tTraverseFields (Just m) t t' [] = void $ mgu (m {AST.metaType = Nothing}) t t'
@@ -568,6 +599,54 @@ splitDeclsIncludes (decl:decls) =
             d@(AST.DeclV _, _) -> (d:decls', includes')
             d@(AST.DeclF _, _) -> (d:decls', includes')
 
+addClassDeclsToGlobals :: AST.SPL -> TInf AST.SPL
+addClassDeclsToGlobals [] = return []
+addClassDeclsToGlobals (d@(AST.DeclC (AST.ClassDecl i vs fs, _), _):ds) = do
+    vs' <- renameVarDecls i vs
+    fs' <- renameFunDecls i fs
+    ds' <- addClassDeclsToGlobals ds
+    return $ d : (vs' ++ fs' ++ ds')
+    where
+        renameVarDecls :: AST.ClassIdentifier -> [AST.VarDecl] -> TInf [AST.Decl]
+        renameVarDecls _ [] = return []
+        renameVarDecls i (d@(decl, m):ds) = do
+            ds' <- renameVarDecls i ds
+            d' <- case decl of
+                    AST.VarDeclUntyped i'@(_, m') e' -> do
+                        let newIdentifier = (AST.Identifier $ classIDName i ++ "." ++ idName i', m')
+                        setFunctionClass newIdentifier (i, i')
+                        return (AST.VarDeclUntyped newIdentifier e', m)
+                    AST.VarDeclTyped t' i'@(_, m') e' -> do
+                        let newIdentifier = (AST.Identifier $ classIDName i ++ "." ++ idName i', m')
+                        setFunctionClass newIdentifier (i, i')
+                        return (AST.VarDeclTyped t' newIdentifier e', m)
+                    AST.VarDeclUntypedUnitialized i'@(_, m') -> do
+                        let newIdentifier = (AST.Identifier $ classIDName i ++ "." ++ idName i', m')
+                        setFunctionClass newIdentifier (i, i')
+                        return (AST.VarDeclUntypedUnitialized newIdentifier, m)
+                    AST.VarDeclTypedUnitialized t' i'@(_, m') -> do
+                        let newIdentifier = (AST.Identifier $ classIDName i ++ "." ++ idName i', m')
+                        setFunctionClass newIdentifier (i, i')
+                        return (AST.VarDeclTypedUnitialized t' newIdentifier, m)
+            return $ (AST.DeclV d', m) : ds'
+        renameFunDecls :: AST.ClassIdentifier -> [AST.FunDecl] -> TInf [AST.Decl]
+        renameFunDecls _ [] = return []
+        renameFunDecls i (d@(decl, m):ds) = do
+            ds' <- renameFunDecls i ds
+            d' <- case decl of
+                AST.FunDeclUntyped i'@(_, m') is' ss' -> do
+                    let newIdentifier = (AST.Identifier $ classIDName i ++ "." ++ idName i', m')
+                    setFunctionClass newIdentifier (i, i')
+                    return (AST.FunDeclUntyped newIdentifier is' ss', m)
+                AST.FunDeclTyped i'@(_, m') is' t' ss' -> do
+                    let newIdentifier = (AST.Identifier $ classIDName i ++ "." ++ idName i', m')
+                    setFunctionClass newIdentifier (i, i')
+                    return (AST.FunDeclTyped newIdentifier is' t' ss', m)
+            return $ (AST.DeclF d', m) : ds'
+addClassDeclsToGlobals (d@(_, m):ds) = do
+    ds' <- addClassDeclsToGlobals ds
+    return $ d : ds'
+
 -- |Perform type inference on the global SPL declarations. Rewrite the AST such that all variables are typed as
 -- completely as possible.
 tInfSPL :: Bool -> TypeCtx -> AST.SPL -> TInf AST.SPL
@@ -575,7 +654,8 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
     -- Assign fresh type vars to all types in the AST meta
     decls' <- mapMeta metaAssignFreshTypeVar decls'
     -- Split include declarations and regular declarations
-    let (decls, includes) = splitDeclsIncludes decls'
+    let (decls'', includes) = splitDeclsIncludes decls'
+    decls <- addClassDeclsToGlobals decls''
     ctx <- ask
     let deps = tInfSPLGraph decls
     let (graph, vertexToEdge, keyToVertex) = Graph.graphFromEdges deps
@@ -987,6 +1067,7 @@ instance Dependencies AST.Expression where
                 (globalDefs, deps ++ deps')
     dependencies globalDefs (AST.ExprNew i, _) = dependencies globalDefs i
     dependencies globalDefs (AST.ExprDelete e, _) = dependencies globalDefs e
+    dependencies globalDefs (AST.ExprClassMember e i, _) = dependencies globalDefs e
 
 instance Dependencies AST.Identifier where
     dependencies globalDefs (AST.Identifier i, _) =
@@ -1242,10 +1323,15 @@ instance RewriteAST AST.Expression where
         m' <- f m
         i' <- mapMeta f i
         return (AST.ExprNew i', m')
-    mapMeta f (AST.ExprDelete e,  m) = do
+    mapMeta f (AST.ExprDelete e, m) = do
         m' <- f m
         e' <- mapMeta f e
         return (AST.ExprDelete e', m')
+    mapMeta f (AST.ExprClassMember e i, m) = do
+        m' <- f m
+        e' <- mapMeta f e
+        i' <- mapMeta f i
+        return (AST.ExprClassMember e' i', m')
 
 instance RewriteAST AST.Constant where
     rewrite = undefined

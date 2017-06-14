@@ -355,6 +355,11 @@ pExprBase = do
             pExprBase' (AST.ExprUnaryOp (AST.UnaryOpDereference, m')
                        (AST.ExprBinaryOp (AST.BinaryOpReferencePlus, m') expr expr', m'), m')
                 ) <|> pExprBase' expr
+        TOperator ODot -> do
+            tokenP <- tok $ TOperator ODot
+            let m' = AST.metaFromPos $ Data.Token.pos tokenP
+            i <- pIdentifier
+            pExprBase' (AST.ExprClassMember expr i, m')
         _ -> pExprBase' expr
     where
         pExprBase' :: AST.Expression -> Parser AST.Expression
@@ -472,7 +477,6 @@ pBinaryOperator = tokenPrim show advance
             TP (TOperator OMod) p -> Just (AST.BinaryOpMod, AST.metaFromPos p)
             TP (TOperator OBitShiftLeft) p -> Just (AST.BinaryOpBitShiftLeft, AST.metaFromPos p)
             TP (TOperator OBitShiftRight) p -> Just (AST.BinaryOpBitShiftRight, AST.metaFromPos p)
-            TP (TOperator ODot) p -> Just (AST.BinaryOpMember, AST.metaFromPos p)
             _ -> Nothing
     ) <|> try ( do
         TP _ p <- tok (TPunctuator PAmpersand)
