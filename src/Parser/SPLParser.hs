@@ -467,6 +467,7 @@ pBinaryOperator = tokenPrim show advance
             TP (TOperator OMod) p -> Just (AST.BinaryOpMod, AST.metaFromPos p)
             TP (TOperator OBitShiftLeft) p -> Just (AST.BinaryOpBitShiftLeft, AST.metaFromPos p)
             TP (TOperator OBitShiftRight) p -> Just (AST.BinaryOpBitShiftRight, AST.metaFromPos p)
+            TP (TOperator ODot) p -> Just (AST.BinaryOpMember, AST.metaFromPos p)
             _ -> Nothing
     ) <|> try ( do
         TP _ p <- tok (TPunctuator PAmpersand)
