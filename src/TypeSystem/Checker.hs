@@ -1021,9 +1021,14 @@ instance RewriteAST AST.Type where
     mapMeta f (a, m) = f m >>= \m' -> return (a, m')
 
 instance RewriteAST AST.Decl where
+    rewrite s (AST.DeclC c, m) = (AST.DeclC (rewrite s c), m)
     rewrite s (AST.DeclV v, m) = (AST.DeclV (rewrite s v), m)
     rewrite s (AST.DeclF f, m) = (AST.DeclF (rewrite s f), m)
 
+    mapMeta f (AST.DeclC c, m) = do
+        m' <- f m
+        c' <- mapMeta f c
+        return (AST.DeclC c', m')
     mapMeta f (AST.DeclV v, m) = do
         m' <- f m
         v' <- mapMeta f v
@@ -1032,6 +1037,16 @@ instance RewriteAST AST.Decl where
         m' <- f m
         fun' <- mapMeta f fun
         return (AST.DeclF fun', m')
+
+instance RewriteAST AST.ClassDecl where
+    rewrite s (AST.ClassDecl i vs fs, m) = (AST.ClassDecl (rewrite s i) (rewrite s vs) (rewrite s fs), m)
+
+    mapMeta f (AST.ClassDecl i vs fs, m) = do
+        m' <- f m
+        i' <- mapMeta f i
+        vs' <- mapMeta f vs
+        fs' <- mapMeta f fs
+        return (AST.ClassDecl i' vs' fs', m')
 
 instance RewriteAST AST.VarDecl where
     rewrite s (AST.VarDeclTyped t i e, m) = (AST.VarDeclTyped (rewrite s t) (rewrite s i) (rewrite s e), m)
