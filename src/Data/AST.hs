@@ -43,6 +43,7 @@ instance (ASTEq a) => ASTEq [a] where
     astEq (t1:ts1) (t2:ts2) = astEq t1 t2 && astEq ts1 ts2
 
 data Decl'           = DeclI IncludeDecl
+                     | DeclC ClassDecl
                      | DeclV VarDecl
                      | DeclF FunDecl
                        deriving (Eq, Show)
@@ -50,11 +51,13 @@ type Decl            = (Decl', Meta)
 
 instance PrettyPrint Decl where
     prettyPrint (DeclI i, _) = prettyPrint i
+    prettyPrint (DeclC c, _) = prettyPrint c
     prettyPrint (DeclV v, _) = prettyPrint v
     prettyPrint (DeclF f, _) = prettyPrint f ++ "\n"
 
 instance (ASTEq Decl) where
     astEq (DeclI i1, _) (DeclI i2, _) = astEq i1 i2
+    astEq (DeclC c1, _) (DeclC c2, _) = astEq c1 c2
     astEq (DeclV v1, _) (DeclV v2, _) = astEq v1 v2
     astEq (DeclF f1, _) (DeclF f2, _) = astEq f1 f2
     astEq _ _ = False
@@ -68,6 +71,20 @@ instance PrettyPrint IncludeDecl where
 
 instance (ASTEq IncludeDecl) where
     astEq (IncludeDecl s1, _) (IncludeDecl s2, _) = s1 == s2
+
+data ClassDecl'      = ClassDecl Identifier [VarDecl] [FunDecl]
+                       deriving (Eq, Show)
+type ClassDecl       = (ClassDecl', Meta)
+
+instance PrettyPrint ClassDecl where
+    prettyPrint (ClassDecl i varDecls funDecls, _) = prettyPrint i
+        ++ "\n{\n"
+        ++ indent (prettyPrint varDecls)
+        ++ "\n\n"
+        ++ indent (prettyPrint funDecls) ++ "\n}"
+
+instance (ASTEq ClassDecl) where
+    astEq (ClassDecl i1 vs1 fs1, _) (ClassDecl i2 vs2 fs2, _) = astEq i1 i2 && astEq vs1 vs2 && astEq fs1 fs2
 
 data VarDecl'        = VarDeclTyped Type Identifier Expression
                      | VarDeclUntyped Identifier Expression
@@ -126,6 +143,7 @@ data Type'           = TypeVoid
                      | TypeIdentifier Identifier
                      | TypePointer Type
                      | TypeFunction [Type] Type
+                     | TypeClass Identifier
                        deriving (Eq, Show)
 type Type            = (Type', Meta)
 
@@ -220,6 +238,8 @@ data Expression'     = ExprIdentifier Identifier
                      | ExprTuple Expression Expression
                      | ExprUnaryOp UnaryOperator Expression
                      | ExprBinaryOp BinaryOperator Expression Expression
+                     | ExprNew Identifier
+                     | ExprDelete Expression
                        deriving (Eq, Show)
 type Expression      = (Expression', Meta)
 
@@ -254,6 +274,8 @@ instance PrettyPrint Expression where
                     then "(" ++ prettyPrint e ++ ")"
                     else prettyPrint e
                 _ -> prettyPrint e
+    prettyPrint (ExprNew i, _) = "new " ++ prettyPrint i
+    prettyPrint (ExprDelete i, _) = "delete " ++ prettyPrint i
 
 instance (ASTEq Expression) where
     astEq (ExprIdentifier i1, _) (ExprIdentifier i2, _) = astEq i1 i2
@@ -263,6 +285,8 @@ instance (ASTEq Expression) where
     astEq (ExprTuple t1 t1', _) (ExprTuple t2 t2', _) = astEq t1 t2 && astEq t2 t2'
     astEq (ExprUnaryOp uOp1 e1, _) (ExprUnaryOp uOp2 e2, _) = astEq uOp1 uOp2 && astEq e1 e2
     astEq (ExprBinaryOp bOp1 e1 e1', _) (ExprBinaryOp bOp2 e2 e2', _) = astEq bOp1 bOp2 && astEq e1 e2 && astEq e1' e2'
+    astEq (ExprNew i1, _) (ExprNew i2, _) = astEq i1 i2
+    astEq (ExprDelete i1, _) (ExprDelete i2, _) = astEq i1 i2
     astEq _ _ = False
 
 data Constant'       = ConstBool Bool
@@ -291,6 +315,7 @@ data UnaryOperator'  = UnaryOpNeg
                      | UnaryOpCast Type
                      | UnaryOpReference
                      | UnaryOpDereference
+                     | UnaryOpMember
                        deriving (Eq, Show)
 type UnaryOperator   = (UnaryOperator', Meta)
 

@@ -54,6 +54,7 @@ data Operator = OAssignment
               | ONeg
               | OBitShiftLeft
               | OBitShiftRight
+              | ODot
                 deriving (Show, Eq)
 
 data Keyword = KVar
@@ -61,6 +62,9 @@ data Keyword = KVar
              | KElse
              | KWhile
              | KReturn
+             | KClass
+             | KNew
+             | KDelete
                deriving (Show, Eq)
 
 data Type = TypeInt

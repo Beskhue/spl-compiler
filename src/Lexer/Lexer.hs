@@ -77,6 +77,9 @@ recognizers = [ -- End of file
                 constructRecognizer 10 "else" (\s -> TKeyword KElse),
                 constructRecognizer 10 "while" (\s -> TKeyword KWhile),
                 constructRecognizer 10 "return" (\s -> TKeyword KReturn),
+                constructRecognizer 10 "class" (\s -> TKeyword KClass),
+                constructRecognizer 10 "new" (\s -> TKeyword KNew),
+                constructRecognizer 10 "delete" (\s -> TKeyword KDelete),
                 -- Types
                 constructRecognizer 9 "Int" (\s -> TType TypeInt),
                 constructRecognizer 9 "Bool" (\s -> TType TypeBool),
@@ -100,6 +103,7 @@ recognizers = [ -- End of file
                 constructRecognizer 8 "!" (\s -> TOperator ONeg),
                 constructRecognizer 8 "<<" (\s -> TOperator OBitShiftLeft),
                 constructRecognizer 8 ">>" (\s -> TOperator OBitShiftRight),
+                constructRecognizer 8 "\\." (\s -> TOperator ODot),
                 -- Fields
                 constructRecognizer 7 "\\.hd" (\s -> TField FHd),
                 constructRecognizer 7 "\\.tl" (\s -> TField FTl),

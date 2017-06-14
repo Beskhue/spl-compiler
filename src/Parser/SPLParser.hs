@@ -70,6 +70,9 @@ pDecl = try (do
     ) <|> (do
         (funDecl, p) <- pFunDecl
         return (AST.DeclF (funDecl, p), p)
+    ) <|> (do
+        (classDecl, p) <- pClassDecl
+        return (AST.DeclC (classDecl, p), p)
     ) <?> "a variable or function declaration"
 
 pVarDecl :: Parser AST.VarDecl
@@ -125,6 +128,16 @@ pFunDecl = (do
                 tok (TPunctuator PBraceClose) <?> "a closing brace"
                 return (AST.FunDeclUntyped (identifier, m) args statements, m)
     ) <?> "a function declaration"
+
+pClassDecl :: Parser AST.ClassDecl
+pClassDecl = do
+    tok $ TKeyword KClass
+    identifier@(_, m) <- pIdentifier
+    tok $ TPunctuator PBraceOpen
+    varDecls <- many $ try pVarDecl
+    funDecls <- many pFunDecl
+    tok $ TPunctuator PBraceClose
+    return (AST.ClassDecl identifier varDecls funDecls, m)
 
 pFunArgsDef :: Parser [AST.Identifier]
 pFunArgsDef = (
@@ -317,6 +330,7 @@ pExprBase = do
         try pExpressionUnaryOperator
          <|> pExprGroupOrTuple
          <|> pExpressionConst
+         <|> pExpressionClass
          <|> pExpressionIdentifier <?> "a base expression")
     t <- pPeek
     case t of
@@ -390,6 +404,17 @@ pExprGroupOrTuple = do
                 return (AST.ExprTuple (expression, m) expression', m)
             <?> "a tuple"
         )
+
+pExpressionClass :: Parser AST.Expression
+pExpressionClass = (do
+        tokenP <- tok $ TKeyword KNew
+        identifier <- pIdentifier
+        return (AST.ExprNew identifier, AST.metaFromPos $ Data.Token.pos tokenP))
+    <|> (do
+        tokenP <- tok $ TKeyword KDelete
+        expr <- pExpression
+        return (AST.ExprDelete expr, AST.metaFromPos $ Data.Token.pos tokenP)
+    )
 
 pConstant :: Parser AST.Constant
 pConstant = tokenPrim show advance
