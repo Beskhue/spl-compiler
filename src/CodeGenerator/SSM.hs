@@ -535,7 +535,7 @@ genExpression (AST.ExprFunCall i@(_,m) args, _) = do
             -- Clean up
             push $ SSMLine (Just lblCleanUp) (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
             genPrintChar ']'
-        genPrint (Type.TPointer _) = push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
+        genPrint (Type.TPointer _) = genFunCall "printHex" 1
         genPrint (Type.TVar _) = return ()
 
 genExpression (AST.ExprConstant c, _) = genConstant c
