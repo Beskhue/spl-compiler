@@ -70,7 +70,7 @@ recognizers = [ -- End of file
                 constructRecognizer 13 "\\*" (\s -> TPunctuator PAsterisk),
                 constructRecognizer 13 "\\&" (\s -> TPunctuator PAmpersand),
                 constructRecognizer 13 "::" (\s -> TPunctuator PFunType),
-                constructRecognizer 13 "\\|\\|" (\s -> TPunctuator PPipe),
+                constructRecognizer 13 "\\|" (\s -> TPunctuator PPipe),
                 -- Keywords
                 constructRecognizer 10 "var" (\s -> TKeyword KVar),
                 constructRecognizer 10 "if" (\s -> TKeyword KIf),
