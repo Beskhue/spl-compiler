@@ -358,6 +358,10 @@ genSPL decls = do
     push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel "main") Nothing
     -- Halt
     push $ SSMLine Nothing (Just $ IControl CHalt) Nothing
+    -- Process all class declaration
+    local (const scopes') (liftM id (mapM genDecl (filter (\decl -> case decl of
+        (AST.DeclC _, _) -> True
+        _ -> False) decls)))
     -- Process all function declarations
     local (const scopes') (liftM id (mapM genDecl (filter (\decl -> case decl of
         (AST.DeclF _, _) -> True
@@ -382,8 +386,21 @@ collectClasses ((AST.DeclC (AST.ClassDecl i vs _, _), _) : ds) = do
 collectClasses (d:ds) = collectClasses ds
 
 genDecl :: AST.Decl -> Gen ()
+genDecl (AST.DeclC classDecl, _) = genClassDecl classDecl
 genDecl (AST.DeclV varDecl, _) = genVarDecl varDecl
 genDecl (AST.DeclF funDecl, _) = genFunDecl funDecl
+
+genClassDecl :: AST.ClassDecl -> Gen ()
+genClassDecl (AST.ClassDecl i _ fs, _) = genClassDecl' i fs
+    where
+        genClassDecl' :: AST.ClassIdentifier -> [AST.FunDecl] -> Gen ()
+        genClassDecl' _ [] = return ()
+        genClassDecl' classIdentifier (f:fs) =
+            case f of
+                (AST.FunDeclTyped i args t stmts, m) -> do
+                    let newIdentifier = (AST.Identifier $ Checker.classIDName classIdentifier ++ "-" ++ Checker.idName i, m)
+                    genFunDecl (AST.FunDeclTyped newIdentifier args t stmts, m)
+                    genClassDecl' classIdentifier fs
 
 genVarDecl :: AST.VarDecl -> Gen ()
 genVarDecl (AST.VarDeclTyped _ i e, _) = genExpression e
@@ -480,6 +497,12 @@ genStatement (AST.StmtReturnVoid, _) stmts = do
     push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
     genStatements stmts
+genStatement (AST.StmtDelete e, m) stmts = do
+     genExpression (AST.ExprDelete e, m)
+     -- Ignore return value
+     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
+     genStatements stmts
+
 
 genExpression :: AST.Expression -> Gen ()
 genExpression (AST.ExprIdentifier i, m) = do
@@ -600,7 +623,18 @@ genExpression (AST.ExprNew i, _) = do
      -- the return value of the new operator
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
-    genFunCall (Checker.classIDName i ++ ".__init__") 1
+    genFunCall (Checker.classIDName i ++ "-__init__") 1
+genExpression (AST.ExprDelete e@(_, m), _) = do
+    genExpression e
+    -- todo: call destructor
+    genFunCall "free" 1
+genExpression (AST.ExprClassMember e@(_, m) i, _) =
+    case AST.metaType m of
+        Just (TClass (TClassIdentifier clss)) -> do
+            Just (_, offsetMap) <- getClass (AST.ClassIdentifier clss, AST.emptyMeta)
+            let Just offset = Map.lookup (Checker.idName i) offsetMap
+            genExpression e
+            push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber offset) Nothing
 
 genFields :: [AST.Field] -> Gen ()
 genFields fields = liftM id (mapM genField fields) >> return ()
@@ -627,6 +661,14 @@ genAddressOfExpression (AST.ExprField e f, _) = do
     genExpression e
     genAddressOfFields f
 genAddressOfExpression (AST.ExprUnaryOp (AST.UnaryOpDereference, _) e, _) = genExpression e
+genAddressOfExpression (AST.ExprClassMember e@(_, m) i, _) =
+    case AST.metaType m of
+        Just (TClass (TClassIdentifier clss)) -> do
+            Just (_, offsetMap) <- getClass (AST.ClassIdentifier clss, AST.emptyMeta)
+            let Just offset = Map.lookup (Checker.idName i) offsetMap
+            genExpression e
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber offset) Nothing
+            push $ SSMLine Nothing (Just $ ICompute $ OAdd) Nothing
 genAddressOfExpression _ = throwError "cannot take address of a temporary value expression"
 
 genAddressOfFields :: [AST.Field] -> Gen ()
