@@ -188,6 +188,7 @@ data Statement'      = StmtVarDecl VarDecl
                      | StmtFunCall Expression [Expression] --lhs must be of type TypeFunction
                      | StmtReturn Expression
                      | StmtReturnVoid
+                     | StmtDelete Expression
                        deriving (Eq, Show)
 type Statement       = (Statement', Meta)
 
@@ -223,6 +224,7 @@ instance PrettyPrint Statement where
             printArgs n (e:es) = ", " ++ prettyPrint e ++ printArgs (n+1) es
     prettyPrint (StmtReturn e, _) = "return " ++ prettyPrint e ++ ";"
     prettyPrint (StmtReturnVoid, _) = "return;"
+    prettyPrint (StmtDelete e, _) = "delete " ++ prettyPrint e ++ ";"
 
 instance (ASTEq Statement) where
     astEq (StmtVarDecl v1, _) (StmtVarDecl v2, _) = astEq v1 v2
@@ -234,6 +236,7 @@ instance (ASTEq Statement) where
     astEq (StmtFunCall e1 es1, _) (StmtFunCall e2 es2, _) = astEq e1 e2 && astEq es1 es2
     astEq (StmtReturn e1, _) (StmtReturn e2, _) = astEq e1 e2
     astEq (StmtReturnVoid, _) (StmtReturnVoid, _) = True
+    astEq (StmtDelete e1, _) (StmtDelete e2, _) = astEq e1 e2
     astEq _ _ = False
 
 data Expression'     = ExprIdentifier Identifier

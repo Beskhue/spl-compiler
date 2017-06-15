@@ -228,7 +228,7 @@ pStatement :: Parser AST.Statement
 pStatement = (do
         (varDecl, m) <- try pVarDecl
         return (AST.StmtVarDecl (varDecl, m), m)
-    ) <|> pStatementConditional <|> pStatementWhile <|> pStatementReturn <|> pStatementBlock <|> try pStatementFunCall <|> pStatementAssignment
+    ) <|> pStatementDelete <|> pStatementConditional <|> pStatementWhile <|> pStatementReturn <|> pStatementBlock <|> try pStatementFunCall <|> pStatementAssignment
 
 pStatementConditional :: Parser AST.Statement
 pStatementConditional =
@@ -297,6 +297,13 @@ pStatementReturn = (do
     case maybeExpr of
         Just expr -> return (AST.StmtReturn expr, AST.metaFromPos p)
         Nothing -> return (AST.StmtReturnVoid, AST.metaFromPos p)) <?> "a return statement"
+
+pStatementDelete :: Parser AST.Statement
+pStatementDelete = (do
+    tokenP <- tok $ TKeyword KDelete
+    expr <- pExpression
+    tok (TPunctuator PSeparator)
+    return (AST.StmtDelete expr, AST.metaFromPos $ Data.Token.pos tokenP)) <?> "a delete statement"
 
 pExpression :: Parser AST.Expression
 pExpression = do

@@ -466,6 +466,14 @@ tInfExpr t (AST.ExprNew i@(_, m'), m) = do
     t' <- tInfClassId i
     mgu m' t' TType
     void $ mgu m t (TPointer $ TClass $ classIDName i)
+tInfExpr t (AST.ExprDelete e@(_, m'), m) = do
+    t' <- newTypeVar "class"
+    tInfExpr t' e
+    t'' <- substitute t'
+    case t'' of
+        TClass _ -> return ()
+        _ -> throwError $ TInfError TInfErrorCannotInferClass (AST.metaPos m')
+    void $ mgu m t TVoid
 tInfExpr t (AST.ExprClassMember e i, m)= do
     t' <- newTypeVar "class"
     tInfExpr t' e
@@ -1018,6 +1026,15 @@ tInfStatement t (AST.StmtReturn expr, m) = do
     tInfExpr t expr
     return ((AST.StmtReturn expr, m), "", True)
 tInfStatement t (AST.StmtReturnVoid, m) = return ((AST.StmtReturnVoid, m), "", True)
+tInfStatement t (AST.StmtDelete expr@(_, m'), m) = do
+    t' <- newTypeVar "class"
+    tInfExpr t' expr
+    t'' <- substitute t'
+    case t'' of
+        TClass _ -> return ()
+        _ -> throwError $ TInfError TInfErrorCannotInferClass (AST.metaPos m')
+    mgu m t TVoid
+    return ((AST.StmtDelete expr, m), "", False)
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -1121,6 +1138,7 @@ instance Dependencies AST.Statement where
                 (globalDefs, deps ++ deps')
     dependencies globalDefs (AST.StmtReturn e, _) = dependencies globalDefs e
     dependencies globalDefs (AST.StmtReturnVoid, _) = (globalDefs, [])
+    dependencies globalDefs (AST.StmtDelete e, _) = dependencies globalDefs e
 
 instance Dependencies AST.Expression where
     dependencies globalDefs (AST.ExprIdentifier i, _) = dependencies globalDefs i
@@ -1307,6 +1325,7 @@ instance RewriteAST AST.Statement where
     rewrite s (AST.StmtAssignment e1 e2, m) = (AST.StmtAssignment (rewrite s e1) (rewrite s e2), m)
     rewrite s (AST.StmtFunCall i es, m) = (AST.StmtFunCall (rewrite s i) (rewrite s es), m)
     rewrite s (AST.StmtReturn e, m) = (AST.StmtReturn (rewrite s e), m)
+    rewrite s (AST.StmtDelete e, m) = (AST.StmtDelete (rewrite s e), m)
     rewrite _ st = st
 
     mapMeta f (AST.StmtVarDecl v, m) = do
@@ -1350,6 +1369,10 @@ instance RewriteAST AST.Statement where
     mapMeta f (AST.StmtReturnVoid, m) = do
         m' <- f m
         return (AST.StmtReturnVoid, m')
+    mapMeta f (AST.StmtDelete e, m) = do
+        m' <- f m
+        e' <- mapMeta f e
+        return (AST.StmtDelete e', m')
 
 instance RewriteAST AST.Field where
     rewrite _ f = f
