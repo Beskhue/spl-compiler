@@ -362,6 +362,11 @@ pExprBase = do
             pExprBase' (AST.ExprUnaryOp (AST.UnaryOpDereference, m')
                        (AST.ExprBinaryOp (AST.BinaryOpReferencePlus, m') expr expr', m'), m')
                 ) <|> pExprBase' expr
+        TPunctuator PMapTo -> do
+            tokenP <- tok $ TPunctuator PMapTo
+            let m' = AST.metaFromPos $ Data.Token.pos tokenP
+            i <- pIdentifier
+            pExprBase' (AST.ExprClassMember (AST.ExprUnaryOp (AST.UnaryOpDereference, m') expr, m') i, m')
         TOperator ODot -> do
             tokenP <- tok $ TOperator ODot
             let m' = AST.metaFromPos $ Data.Token.pos tokenP
