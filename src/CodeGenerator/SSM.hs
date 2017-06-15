@@ -628,13 +628,18 @@ genExpression (AST.ExprDelete e@(_, m), _) = do
     genExpression e
     -- todo: call destructor
     genFunCall "free" 1
-genExpression (AST.ExprClassMember e@(_, m) i, _) =
+genExpression (AST.ExprClassMember e@(_, m) i, m') =
     case AST.metaType m of
         Just (TClass (TClassIdentifier clss)) -> do
-            Just (_, offsetMap) <- getClass (AST.ClassIdentifier clss, AST.emptyMeta)
-            let Just offset = Map.lookup (Checker.idName i) offsetMap
-            genAddressOfExpression e
-            push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber offset) Nothing
+            case AST.metaType m' of
+                Just (TFunction _ _) -> do
+                    let func = clss ++ "-" ++ Checker.idName i
+                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel func) Nothing
+                _ -> do
+                    Just (_, offsetMap) <- getClass (AST.ClassIdentifier clss, AST.emptyMeta)
+                    let Just offset = Map.lookup (Checker.idName i) offsetMap
+                    genAddressOfExpression e
+                    push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber offset) Nothing
 
 genFields :: [AST.Field] -> Gen ()
 genFields fields = liftM id (mapM genField fields) >> return ()
@@ -661,14 +666,19 @@ genAddressOfExpression (AST.ExprField e f, _) = do
     genExpression e
     genAddressOfFields f
 genAddressOfExpression (AST.ExprUnaryOp (AST.UnaryOpDereference, _) e, _) = genExpression e
-genAddressOfExpression (AST.ExprClassMember e@(_, m) i, _) =
+genAddressOfExpression (AST.ExprClassMember e@(_, m) i, m') =
     case AST.metaType m of
         Just (TClass (TClassIdentifier clss)) -> do
-            Just (_, offsetMap) <- getClass (AST.ClassIdentifier clss, AST.emptyMeta)
-            let Just offset = Map.lookup (Checker.idName i) offsetMap
-            genAddressOfExpression e
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber offset) Nothing
-            push $ SSMLine Nothing (Just $ ICompute $ OAdd) Nothing
+            case AST.metaType m' of
+                Just (TFunction _ _) -> do
+                    let func = clss ++ "-" ++ Checker.idName i
+                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel func) Nothing
+                _ -> do
+                    Just (_, offsetMap) <- getClass (AST.ClassIdentifier clss, AST.emptyMeta)
+                    let Just offset = Map.lookup (Checker.idName i) offsetMap
+                    genAddressOfExpression e
+                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber offset) Nothing
+                    push $ SSMLine Nothing (Just $ ICompute $ OAdd) Nothing
 genAddressOfExpression _ = throwError "cannot take address of a temporary value expression"
 
 genAddressOfFields :: [AST.Field] -> Gen ()
