@@ -90,6 +90,7 @@ typedASTToCtx (decl:decls) =
     let schemes = typedASTToCtx decls in
         case decl of
             (AST.DeclI _, _) -> schemes
+            (AST.DeclC (AST.ClassDecl i vs fs, _), _) -> schemes
             (AST.DeclV (AST.VarDeclTyped t i _, _), _) ->
                 Map.insert (Checker.idName i) (Checker.generalize Checker.emptyScopedCtx (Checker.rTranslateType t)) schemes
             (AST.DeclV (AST.VarDeclTypedUnitialized t i, _), _) ->
