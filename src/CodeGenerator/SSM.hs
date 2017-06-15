@@ -451,15 +451,17 @@ genStatements [] = return ()
 genStatements (stmt:stmts) = genStatement stmt stmts
 
 genStatement :: AST.Statement -> [AST.Statement] -> Gen ()
-genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e, m), _) stmts = do
+genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e@(_, m), _), _) stmts = do
     -- Calculate size of the object that is to be allocated
     let (Just t) = AST.metaType m
     size <- sizeOf t
     -- Evaluate object to stack and bookkeep
-    genExpression e
+    genCopyOfExpression e
     offset <- getLocalAddressOffset
     scopes <- ask
-    mapM (\offset' -> push (SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + offset')) Nothing)) [1..size]
+    --
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ size - 1) Nothing
+    mapM (\offset' -> push (SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + offset')) (Just $ "store member " ++ show offset'))) (reverse [1..size])
     -- push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + 1)) (Just $ "declare local " ++ Checker.idName i)
     case Stack.stackPop scopes of
         Just (scopes', scope) -> do
@@ -511,7 +513,7 @@ genStatement (AST.StmtBlock stmts', _) stmts = do
     local (const $ Stack.stackPush scopes emptyVariableScope) (genStatements stmts')
     genStatements stmts
 genStatement (AST.StmtAssignment e1 e2, _) stmts = do
-    genExpression e2
+    genCopyOfExpression e2
     genAddressOfExpression e1
     push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
     genStatements stmts
@@ -521,7 +523,7 @@ genStatement (AST.StmtFunCall e args, p) stmts = do
     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
     genStatements stmts
 genStatement (AST.StmtReturn e, p) stmts = do
-    genExpression e
+    genCopyOfExpression e
     push $ SSMLine Nothing (Just $ IStore $ SRegister $ ARegister RReturnRegister) Nothing
     genStatement (AST.StmtReturnVoid, p) stmts
 genStatement (AST.StmtReturnVoid, _) stmts = do
@@ -553,7 +555,7 @@ genExpression (AST.ExprField e f, _) = do
     genFields f
 genExpression (AST.ExprFunCall expr@(e,m) args, _) = do
     -- Evaluate expressions to the stack
-    liftM id (mapM genExpression (reverse args))
+    liftM id (mapM genCopyOfExpression (reverse args))
 
     -- Calculate stack size
     let argTypes = map (\(_, m) -> case AST.metaType m of Just t -> t) args
@@ -687,6 +689,28 @@ genFields fields = liftM id (mapM genField fields) >> return ()
         genField (AST.FieldFst, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) Nothing
         genField (AST.FieldSnd, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
 
+genCopyOfExpression :: AST.Expression -> Gen ()
+genCopyOfExpression e@(_, m) = case AST.metaType m of
+    Just t@(TClass (TClassIdentifier s)) -> do --todo do not do this special case if the class is being *initialized*
+        size <- sizeOf t
+        -- Make room for the object by incrementing the stack pointer
+        --push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RStackPointer) Nothing
+        --push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ size) Nothing
+        --push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+        --push $ SSMLine Nothing (Just $ IStore $ SRegister $ ARegister RStackPointer) Nothing
+        push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber size) Nothing
+        -- Create pointer to expression we want to copy
+        genAddressOfExpression e
+        -- Create pointer to the space we just created in the stack
+        push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RStackPointer) Nothing
+        push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ - (size + 1)) Nothing
+        push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+        -- use copy constructor
+        genFunCall (s ++ "-__copy__") 2
+        -- ignore the return value of the copy function, and jump to the start of the object space
+        push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ - (1 + size)) Nothing
+    _ -> genExpression e
+
 genAddressOfExpression :: AST.Expression -> Gen ()
 genAddressOfExpression (AST.ExprIdentifier i, m) = do
     location <- getVariable $ Checker.idName i
@@ -796,11 +820,11 @@ endPCToStartStackOffset :: Int
 endPCToStartStackOffset = 18
 
 genFunCall :: String -> Int -> Gen ()
-genFunCall str numArgs = do
+genFunCall str frameSize = do
     -- Call function
     push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel str) Nothing
     -- Clean up stack
-    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ - numArgs) Nothing
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ - frameSize) Nothing
     -- Load returned value
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
 
@@ -874,9 +898,11 @@ genLength = do
 
 mAllocSmallestBlockSize :: Int
 --mAllocSmallestBlockSize = 1024     -- 2^10
-mAllocSmallestBlockSize = 524288
+--mAllocSmallestBlockSize = 524288
+mAllocSmallestBlockSize = 8
 mAllocLargestBlockSize :: Int
-mAllocLargestBlockSize = 1048576 -- 2^20
+--mAllocLargestBlockSize = 1048576 -- 2^20
+mAllocLargestBlockSize = 32
 mAllocNumBlocks :: Int
 mAllocNumBlocks = ceiling $ (fromIntegral mAllocLargestBlockSize) / (fromIntegral mAllocSmallestBlockSize)
 
