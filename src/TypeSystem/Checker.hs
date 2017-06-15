@@ -772,7 +772,10 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
                         let (Left i'@(_, m'')) = declIdentifier d
                         let newIdentifier = (AST.Identifier $ classIDName i ++ "." ++ idName i', m'')
                         let (Just (AST.DeclV d', _)) = Map.lookup newIdentifier declMap
-                        return $ d' : ds'
+                        let d'' = case d' of
+                                (AST.VarDeclTyped t _ e, m''') -> (AST.VarDeclTyped t i' e, m''')
+                                (AST.VarDeclTypedUnitialized t _, m''') -> (AST.VarDeclTypedUnitialized t i', m''')
+                        return (d'' : ds')
                     rewriteClassFunDecls' :: Map.Map AST.Identifier AST.Decl -> AST.ClassIdentifier -> [AST.FunDecl] -> TInf [AST.FunDecl]
                     rewriteClassFunDecls' _ _ [] = return []
                     rewriteClassFunDecls' declMap i (d : ds) = do
@@ -780,7 +783,9 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
                         let (Left i'@(_, m'')) = declIdentifier d
                         let newIdentifier = (AST.Identifier $ classIDName i ++ "." ++ idName i', m'')
                         let (Just (AST.DeclF d', _)) = Map.lookup newIdentifier declMap
-                        return $ d' : ds'
+                        let d'' = case d' of
+                                (AST.FunDeclTyped _ is t ss, m''') -> (AST.FunDeclTyped i' is t ss, m''')
+                        return $ d'' : ds'
             rewriteClassDecls' spl (d:ds) = do
                 ds' <- rewriteClassDecls' spl ds
                 return $ d : ds'
