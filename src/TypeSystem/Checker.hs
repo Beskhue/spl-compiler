@@ -407,19 +407,6 @@ tInfVarName :: Pos.Pos -> String -> TInf Type
 tInfVarName p varName = do
     scheme <- getScheme p varName
     instantiate scheme
-    {-
-    ctx <- ask
-    s <- substitution
-    let ctx' = apply s ctx
-    tInfVarName' (Stack.stackToList ctx') p varName
-    where
-        tInfVarName' :: [TypeCtx] -> Pos.Pos -> String -> TInf Type
-        tInfVarName' [] p varName = throwError $ TInfError (TInfErrorUnboundVariable varName) p
-        tInfVarName' (TypeCtx ctx : ctxs) p varName =
-            case Map.lookup varName ctx of
-                Nothing -> tInfVarName' ctxs p varName
-                Just scheme -> instantiate scheme
-    -}
 
 -- |Perform type inference on an AST identifier
 tInfId :: AST.Identifier -> TInf Type
