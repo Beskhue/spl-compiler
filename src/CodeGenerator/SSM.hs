@@ -253,9 +253,14 @@ emptyVariableScopes = Stack.stackNew
 
 --------------------------------------------------------------------------------
 
+type ClassMap = Map.Map AST.ClassIdentifier (Int, Map.Map String AddressOffset)
+
+--------------------------------------------------------------------------------
+
 data GenState = GenState { ssm :: SSM,
                            labelSupply :: Int,
-                           localAddressOffset :: AddressOffset}
+                           localAddressOffset :: AddressOffset,
+                           classMap :: ClassMap }
                     deriving (Show)
 
 type Gen a = ExceptT String (ReaderT VariableScopes (State GenState)) a
@@ -263,7 +268,7 @@ type Gen a = ExceptT String (ReaderT VariableScopes (State GenState)) a
 runGen :: Gen a -> (Either String a, GenState)
 runGen g = runState (runReaderT (runExceptT g) emptyVariableScopes) initGenState
     where
-        initGenState = GenState {ssm = [], labelSupply = 0, localAddressOffset = 0}
+        initGenState = GenState {ssm = [], labelSupply = 0, localAddressOffset = 0, classMap = Map.empty}
 
 getFreshLabel :: Gen String
 getFreshLabel = do
@@ -304,6 +309,18 @@ resetLocalAddressOffset = do
     st <- get
     put st {localAddressOffset = 0}
 
+getClass :: AST.ClassIdentifier -> Gen (Maybe (Int, Map.Map String AddressOffset))
+getClass i = do
+    st <- get
+    let m = classMap st
+    return $ Map.lookup i m
+
+setClass :: AST.ClassIdentifier -> (Int, Map.Map String AddressOffset) -> Gen ()
+setClass i info = do
+    st <- get
+    let m = classMap st
+    put $ st {classMap = Map.insert i info m}
+
 --------------------------------------------------------------------------------
 
 gen :: AST.SPL -> Either String SSM
@@ -321,6 +338,8 @@ genDet spl =
 
 genSPL :: AST.SPL -> Gen SSM
 genSPL decls = do
+    -- First collect class information
+    collectClasses decls
     -- Process all variable declarations
     let varDecls = filter (\decl -> case decl of
             (AST.DeclV _, _) -> True
@@ -350,6 +369,17 @@ genSPL decls = do
     -- Optimize and output generated SSM
     st <- get
     return $ optimize $ ssm st
+
+-- |Collect class information
+collectClasses :: AST.SPL -> Gen ()
+collectClasses [] = return ()
+collectClasses ((AST.DeclC (AST.ClassDecl i vs _, _), _): ds) = do
+    let size = length vs
+    let strs = map Checker.declIdentifierString vs
+    let assoc = zip strs [0..]
+    setClass i (size, Map.fromList assoc)
+
+collectClasses (d:ds) = collectClasses ds
 
 genDecl :: AST.Decl -> Gen ()
 genDecl (AST.DeclV varDecl, _) = genVarDecl varDecl
@@ -562,6 +592,15 @@ genExpression (AST.ExprBinaryOp op e1@(_, m1) e2@(_, m2), _) = do
                     genExpression e2
                     genBinaryOp op t1 t2
         Nothing -> throwError $ show m1 ++ show m2
+genExpression (AST.ExprNew i, _) = do
+    Just (size, _) <- getClass i
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber size) (Just $ "allocate size for " ++ show i)
+    genFunCall "malloc" 1
+     -- Load return register twice, once for the fun call to init, and once as
+     -- the return value of the new operator
+    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
+    genFunCall (Checker.classIDName i ++ ".__init__") 1
 
 genFields :: [AST.Field] -> Gen ()
 genFields fields = liftM id (mapM genField fields) >> return ()
