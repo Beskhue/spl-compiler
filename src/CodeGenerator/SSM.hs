@@ -447,7 +447,13 @@ genFunDecl (AST.FunDeclTyped i args _ stmts, m) = do
         push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
 
 genStatements :: [AST.Statement] -> Gen ()
-genStatements [] = return ()
+genStatements [] = destroyLocals
+    where
+        destroyLocals :: Gen ()
+        destroyLocals = do
+            scope <- ask
+            case Stack.stackPop Scope of
+                Just ()
 genStatements (stmt:stmts) = genStatement stmt stmts
 
 genStatement :: AST.Statement -> [AST.Statement] -> Gen ()
@@ -694,10 +700,6 @@ genCopyOfExpression e@(_, m) = case AST.metaType m of
     Just t@(TClass (TClassIdentifier s)) -> do --todo do not do this special case if the class is being *initialized*
         size <- sizeOf t
         -- Make room for the object by incrementing the stack pointer
-        --push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RStackPointer) Nothing
-        --push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ size) Nothing
-        --push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
-        --push $ SSMLine Nothing (Just $ IStore $ SRegister $ ARegister RStackPointer) Nothing
         push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber size) Nothing
         -- Create pointer to expression we want to copy
         genAddressOfExpression e
