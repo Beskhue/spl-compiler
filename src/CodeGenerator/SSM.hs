@@ -299,10 +299,10 @@ getLocalAddressOffset = do
     st <- get
     return $ localAddressOffset st
 
-incrementLocalAddressOffset :: Gen ()
-incrementLocalAddressOffset = do
+incrementLocalAddressOffset :: Int -> Gen ()
+incrementLocalAddressOffset size = do
     st <- get
-    put st {localAddressOffset = localAddressOffset st + 1}
+    put st {localAddressOffset = localAddressOffset st + size}
 
 resetLocalAddressOffset :: Gen ()
 resetLocalAddressOffset = do
@@ -320,6 +320,12 @@ setClass i info = do
     st <- get
     let m = classMap st
     put $ st {classMap = Map.insert (Checker.classIDName i) info m}
+
+sizeOf :: Type.Type -> Gen Int
+sizeOf (Type.TClass (Type.TClassIdentifier i)) = do
+    Just (size, _) <- getClass (AST.ClassIdentifier i, AST.emptyMeta)
+    return size
+sizeOf _ = return 1
 
 --------------------------------------------------------------------------------
 
@@ -407,14 +413,30 @@ genVarDecl (AST.VarDeclTyped _ i e, _) = genExpression e
 genVarDecl (AST.VarDeclTypedUnitialized _ i, _) = return ()
 
 genFunDecl :: AST.FunDecl -> Gen ()
-genFunDecl (AST.FunDeclTyped i args _ stmts, _) = do
+genFunDecl (AST.FunDeclTyped i args _ stmts, m) = do
         resetLocalAddressOffset
-        let nLocals = numLocals stmts
-        -- Function entry; reserve memory space for locals
-        push $ SSMLine (Just $ Checker.idName i) (Just $ IControl $ CLink $ ANumber nLocals) Nothing
+
+        -- Get function type
+        let Just (TFunction tArgs tRet) = AST.metaType m
+
+        -- Make sure return value fits in the return register
+        retSize <- sizeOf tRet
+        when (retSize > 1)
+            (throwError "size of function return value cannot be greater than 1")
+
+        -- Calculate frame size
+        let localsTypes = locals stmts
+        sizes <- mapM sizeOf localsTypes
+        let frameSize = sum sizes
+
+        -- Function entry; reserve stack space for locals
+        push $ SSMLine (Just $ Checker.idName i) (Just $ IControl $ CLink $ ANumber frameSize) Nothing
 
         -- Calculate new scope
-        let scope = [(Checker.idName arg, -offset) | (arg, offset) <- zip args [2..]]
+        sizes <- mapM sizeOf tArgs
+        let cumulativeSizes = scanl1 (+) sizes
+        let scope = [(Checker.idName arg, -(1 + offset)) | (arg, offset) <- zip args cumulativeSizes]
+
         -- Add to old scope
         scopes <- ask
         let scopes' = Stack.stackPush scopes (Map.fromList scope)
@@ -429,23 +451,32 @@ genStatements [] = return ()
 genStatements (stmt:stmts) = genStatement stmt stmts
 
 genStatement :: AST.Statement -> [AST.Statement] -> Gen ()
-genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e, _), _) stmts = do
+genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e, m), _) stmts = do
+    -- Calculate size of the object that is to be allocated
+    let (Just t) = AST.metaType m
+    size <- sizeOf t
+    -- Evaluate object to stack and bookkeep
     genExpression e
     offset <- getLocalAddressOffset
     scopes <- ask
-    push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + 1)) (Just $ "declare local " ++ Checker.idName i)
+    mapM (\offset' -> push (SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + offset')) Nothing)) [1..size]
+    -- push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + 1)) (Just $ "declare local " ++ Checker.idName i)
     case Stack.stackPop scopes of
         Just (scopes', scope) -> do
             let scope' = Map.insert (Checker.idName i) (offset + 1) scope
-            incrementLocalAddressOffset
+            incrementLocalAddressOffset size
             local (const $ Stack.stackPush scopes' scope') (genStatements stmts)
-genStatement (AST.StmtVarDecl (AST.VarDeclTypedUnitialized _ i, _), _) stmts = do
+genStatement (AST.StmtVarDecl (AST.VarDeclTypedUnitialized _ i, m), _) stmts = do
+    -- Calculate size of the object that is to be allocated
+    let (Just t) = AST.metaType m
+    size <- sizeOf t
+    -- Bookkeep
     offset <- getLocalAddressOffset
     scopes <- ask
     case Stack.stackPop scopes of
         Just (scopes', scope) -> do
             let scope' = Map.insert (Checker.idName i) (offset + 1) scope
-            incrementLocalAddressOffset
+            incrementLocalAddressOffset size
             local (const $ Stack.stackPush scopes' scope') (genStatements stmts)
 genStatement (AST.StmtIf e s, _) stmts = do
     genExpression e
@@ -521,25 +552,31 @@ genExpression (AST.ExprField e f, _) = do
     genExpression e
     genFields f
 genExpression (AST.ExprFunCall expr@(e,m) args, _) = do
+    -- Evaluate expressions to the stack
     liftM id (mapM genExpression (reverse args))
+
+    -- Calculate stack size
+    let argTypes = map (\(_, m) -> case AST.metaType m of Just t -> t) args
+    stackSize <- liftM sum (mapM sizeOf argTypes)
+
     case e of
         AST.ExprIdentifier (AST.Identifier "print", _) -> do
                     case AST.metaType m of Just (Type.TFunction [t] _) -> genPrint t
-                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
+                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -stackSize) Nothing -- Load boolean True onto stack
         AST.ExprIdentifier (AST.Identifier "println", _) -> do
                     case AST.metaType m of Just (Type.TFunction [t] _) -> genPrint t
                     genPrintChar '\n'
-                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
+                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -stackSize) Nothing -- Load boolean True onto stack
         AST.ExprIdentifier (AST.Identifier "isEmpty", _) -> do
                     -- Get next address of the list, if it is -1 the list is empty
                     push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) (Just "start isEmpty")
-                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
+                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -stackSize) Nothing
                     push $ SSMLine Nothing (Just $ ICompute OEq) (Just "end isEmpty")
         _ -> do
             genExpression expr
             push $ SSMLine Nothing (Just $ IControl $ CJumpSubroutine) Nothing
             -- Clean up stack
-            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ - length args) Nothing
+            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -stackSize) Nothing
             -- Load returned value
             push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
 
@@ -770,21 +807,22 @@ genFunCall str numArgs = do
 --------------------------------------------------------------------------------
 
 class Locals a where
-    numLocals :: a -> Int
+    locals :: a -> [Type.Type]
 
 instance Locals AST.FunDecl where
-    numLocals (AST.FunDeclTyped _ args _ stmts, _) = numLocals stmts
+    locals (AST.FunDeclTyped _ args _ stmts, _) = locals stmts
 
 instance Locals [AST.Statement] where
-    numLocals stmts = sum (map numLocals stmts)
+    locals stmts = concat $ map locals stmts
 
 instance Locals AST.Statement where
-    numLocals (AST.StmtVarDecl _, _) = 1
-    numLocals (AST.StmtIf _ s, _) = numLocals s
-    numLocals (AST.StmtIfElse _ s1 s2, _) = numLocals s1 + numLocals s2
-    numLocals (AST.StmtBlock stmts, _) = numLocals stmts
-    numLocals (AST.StmtWhile _ s, _) = numLocals s
-    numLocals _ = 0
+    locals (AST.StmtVarDecl _, m) = case AST.metaType m of
+        Just t -> [t]
+    locals (AST.StmtIf _ s, _) = locals s
+    locals (AST.StmtIfElse _ s1 s2, _) = locals s1 ++ locals s2
+    locals (AST.StmtBlock stmts, _) = locals stmts
+    locals (AST.StmtWhile _ s, _) = locals s
+    locals _ = []
 
 --------------------------------------------------------------------------------
 -- Built-in assembly library functions
