@@ -465,7 +465,7 @@ tInfExpr t (AST.ExprBinaryOp op e1 e2, m) = do
 tInfExpr t (AST.ExprNew i@(_, m'), m) = do
     t' <- tInfClassId i
     mgu m' t' TType
-    void $ mgu m t (TClass $ classIDName i)
+    void $ mgu m t (TPointer $ TClass $ classIDName i)
 tInfExpr t (AST.ExprClassMember e i, m)= do
     t' <- newTypeVar "class"
     tInfExpr t' e
