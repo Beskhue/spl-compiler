@@ -285,7 +285,10 @@ instance PrettyPrint Expression where
                 _ -> prettyPrint e
     prettyPrint (ExprNew i, _) = "new " ++ prettyPrint i
     prettyPrint (ExprDelete i, _) = "delete " ++ prettyPrint i
-    prettyPrint (ExprClassMember e i, _) = prettyPrint e ++ "." ++ prettyPrint i
+    prettyPrint (ExprClassMember e i, _) = case e of
+        (ExprUnaryOp _ _, _) -> "(" ++ prettyPrint e ++ ")"
+        _ -> prettyPrint e
+        ++ "." ++ prettyPrint i
 
 instance (ASTEq Expression) where
     astEq (ExprIdentifier i1, _) (ExprIdentifier i2, _) = astEq i1 i2
