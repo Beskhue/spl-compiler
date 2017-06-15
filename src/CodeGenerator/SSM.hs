@@ -253,7 +253,7 @@ emptyVariableScopes = Stack.stackNew
 
 --------------------------------------------------------------------------------
 
-type ClassMap = Map.Map AST.ClassIdentifier (Int, Map.Map String AddressOffset)
+type ClassMap = Map.Map String (Int, Map.Map String AddressOffset)
 
 --------------------------------------------------------------------------------
 
@@ -313,13 +313,13 @@ getClass :: AST.ClassIdentifier -> Gen (Maybe (Int, Map.Map String AddressOffset
 getClass i = do
     st <- get
     let m = classMap st
-    return $ Map.lookup i m
+    return $ Map.lookup (Checker.classIDName i) m
 
 setClass :: AST.ClassIdentifier -> (Int, Map.Map String AddressOffset) -> Gen ()
 setClass i info = do
     st <- get
     let m = classMap st
-    put $ st {classMap = Map.insert i info m}
+    put $ st {classMap = Map.insert (Checker.classIDName i) info m}
 
 --------------------------------------------------------------------------------
 
@@ -373,12 +373,12 @@ genSPL decls = do
 -- |Collect class information
 collectClasses :: AST.SPL -> Gen ()
 collectClasses [] = return ()
-collectClasses ((AST.DeclC (AST.ClassDecl i vs _, _), _): ds) = do
+collectClasses ((AST.DeclC (AST.ClassDecl i vs _, _), _) : ds) = do
     let size = length vs
     let strs = map Checker.declIdentifierString vs
     let assoc = zip strs [0..]
     setClass i (size, Map.fromList assoc)
-
+    collectClasses ds
 collectClasses (d:ds) = collectClasses ds
 
 genDecl :: AST.Decl -> Gen ()
