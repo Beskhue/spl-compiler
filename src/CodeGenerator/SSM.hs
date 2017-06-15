@@ -854,10 +854,7 @@ instance Locals AST.Statement where
 -- Push back the start of the stack
 genPushBackStack :: Int -> Gen ()
 genPushBackStack n = do
-    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RStackPointer) (Just $ "push back stack to make room for " ++ show n ++ " globals")
-    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber n) Nothing
-    push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
-    push $ SSMLine Nothing (Just $ IStore $ SRegister $ ARegister RStackPointer) Nothing
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber n) (Just $ "push back stack to make room for " ++ show n ++ "globals")
 
 genLibrary :: Gen ()
 genLibrary = do
