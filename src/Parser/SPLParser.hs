@@ -314,7 +314,9 @@ pExpression = do
             tok (TPunctuator PParenOpen)
             args <- pFunArgs
             tok (TPunctuator PParenClose) <?> "closing function call parenthesis"
-            return (AST.ExprFunCall expr args, m)
+            case expr of
+                (AST.ExprClassMember (AST.ExprUnaryOp (AST.UnaryOpDereference, _) e, _) i, m') -> return (AST.ExprFunCall expr (e : args), m)
+                _ -> return (AST.ExprFunCall expr args, m)
         _ -> return expr
     where
         pExpression' :: Int -> Parser AST.Expression
