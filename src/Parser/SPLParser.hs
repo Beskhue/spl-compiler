@@ -131,7 +131,7 @@ pFunDecl = (do
 
 pClassDecl :: Parser AST.ClassDecl
 pClassDecl = do
-    tok $ TKeyword KClass
+    optional $ tok $ TKeyword KClass
     classIdentifier@(_, m) <- pClassIdentifier
     tok $ TPunctuator PBraceOpen
     varDecls <- many $ try pVarDecl
