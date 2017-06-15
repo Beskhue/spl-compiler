@@ -22,7 +22,8 @@ data Type = TVar String
           | TPointer Type
           | TVoid
           | TType
-          | TClass String
+          | TClass Type
+          | TClassIdentifier String
             deriving (Show, Eq, Ord)
 
 -- |A type scheme (polytype): a type with a list of bound type variables (the type variables not bound are still free)

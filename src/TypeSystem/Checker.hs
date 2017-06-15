@@ -87,7 +87,8 @@ instance Types Type where
     freeTypeVars (TPointer t) = freeTypeVars t
     freeTypeVars TVoid = Set.empty
     freeTypeVars TType = Set.empty
-    freeTypeVars (TClass _) = Set.empty
+    freeTypeVars (TClass t) = freeTypeVars t
+    freeTypeVars (TClassIdentifier _) = Set.empty
 
     apply s (TVar v) =
         case Map.lookup v s of
@@ -369,9 +370,10 @@ mgu m t1 t2 = do
     mgu' p (TPointer t) (TPointer t') = mgu' p t t'
     mgu' p TVoid TVoid                = return nullSubstitution
     mgu' p TType TType                = return nullSubstitution
-    mgu' p t1@(TClass i) t2@(TClass i')      = if i == i'
+    mgu' p (TClass t) (TClass t')     = mgu' p t t'
+    mgu' p t@(TClassIdentifier i) t'@(TClassIdentifier i') = if i == i'
         then return nullSubstitution
-        else throwError $ TInfError (TInfErrorUnify t1 t2) p
+        else throwError $ TInfError (TInfErrorUnify t t') p
     mgu' p t1 t2                      = throwError $ TInfError (TInfErrorUnify t1 t2) p
 
 metaMGU :: AST.Meta -> Type -> TInf Substitution
@@ -465,21 +467,18 @@ tInfExpr t (AST.ExprBinaryOp op e1 e2, m) = do
 tInfExpr t (AST.ExprNew i@(_, m'), m) = do
     t' <- tInfClassId i
     mgu m' t' TType
-    void $ mgu m t (TPointer $ TClass $ classIDName i)
+    void $ mgu m t (TPointer $ TClass $ TClassIdentifier $ classIDName i)
 tInfExpr t (AST.ExprDelete e@(_, m'), m) = do
     t' <- newTypeVar "class"
-    tInfExpr t' e
+    tInfExpr (TPointer $ TClass t') e
     t'' <- substitute t'
-    case t'' of
-        TClass _ -> return ()
-        _ -> throwError $ TInfError TInfErrorCannotInferClass (AST.metaPos m')
     void $ mgu m t TVoid
 tInfExpr t (AST.ExprClassMember e i, m)= do
     t' <- newTypeVar "class"
     tInfExpr t' e
     t'' <- substitute t'
     case t'' of
-        TClass clss -> do
+        TClass (TClassIdentifier clss) -> do
             let newIdentifier = (AST.Identifier $ clss ++ "." ++ idName i, m)
             t''' <- tInfId newIdentifier
             void $ mgu m t t'''
@@ -1028,11 +1027,8 @@ tInfStatement t (AST.StmtReturn expr, m) = do
 tInfStatement t (AST.StmtReturnVoid, m) = return ((AST.StmtReturnVoid, m), "", True)
 tInfStatement t (AST.StmtDelete expr@(_, m'), m) = do
     t' <- newTypeVar "class"
-    tInfExpr t' expr
+    tInfExpr (TPointer $ TClass t') expr
     t'' <- substitute t'
-    case t'' of
-        TClass _ -> return ()
-        _ -> throwError $ TInfError TInfErrorCannotInferClass (AST.metaPos m')
     mgu m t TVoid
     return ((AST.StmtDelete expr, m), "", False)
 
@@ -1176,17 +1172,21 @@ instance Dependencies AST.ClassIdentifier where
 ------------------------------------------------------------------------------------------------------------------------
 
 translateType :: AST.Meta -> Type -> AST.Type
-translateType m (TVar str)         = (AST.TypeIdentifier (AST.Identifier str, m), m)
-translateType m TVoid              = (AST.TypeVoid, m)
-translateType m TBool              = (AST.TypeBool, m)
-translateType m TInt               = (AST.TypeInt, m)
-translateType m TChar              = (AST.TypeChar, m)
-translateType m (TList t)          = (AST.TypeList $ translateType m t, m)
-translateType m (TTuple t1 t2)     = (AST.TypeTuple (translateType m t1) (translateType m t2), m)
-translateType m (TPointer t)       = (AST.TypePointer $ translateType m t, m)
-translateType m (TFunction args t) = (AST.TypeFunction (map (translateType m) args) (translateType m t), m)
-translateType m TType              = (AST.TypeType, m)
-translateType m (TClass str)       = (AST.TypeClass (AST.ClassIdentifier str, m), m)
+translateType m (TVar str)                      = (AST.TypeIdentifier (AST.Identifier str, m), m)
+translateType m TVoid                           = (AST.TypeVoid, m)
+translateType m TBool                           = (AST.TypeBool, m)
+translateType m TInt                            = (AST.TypeInt, m)
+translateType m TChar                           = (AST.TypeChar, m)
+translateType m (TList t)                       = (AST.TypeList $ translateType m t, m)
+translateType m (TTuple t1 t2)                  = (AST.TypeTuple (translateType m t1) (translateType m t2), m)
+translateType m (TPointer t)                    = (AST.TypePointer $ translateType m t, m)
+translateType m (TFunction args t)              = (AST.TypeFunction (map (translateType m) args) (translateType m t), m)
+translateType m TType                           = (AST.TypeType, m)
+translateType m (TClass t)                      = (AST.TypeClass (AST.ClassIdentifier $ case t of
+                                                        TClassIdentifier str -> str
+                                                        TVar str -> str
+                                                        , m), m)
+translateType m (TClassIdentifier str)          = (AST.TypeClass (AST.ClassIdentifier str, m), m) -- Not a true translation
 
 rTranslateType :: AST.Type -> Type
 rTranslateType (AST.TypeIdentifier id, _)   = TVar $ idName id
@@ -1199,7 +1199,7 @@ rTranslateType (AST.TypeTuple t1 t2, _)     = TTuple (rTranslateType t1) (rTrans
 rTranslateType (AST.TypePointer t, _)       = TPointer $ rTranslateType t
 rTranslateType (AST.TypeFunction args t, _) = TFunction (map rTranslateType args) (rTranslateType t)
 rTranslateType (AST.TypeType, _)            = TType
-rTranslateType (AST.TypeClass i, _)         = TClass $ classIDName i
+rTranslateType (AST.TypeClass i, _)         = TClass $ TClassIdentifier $ classIDName i
 
 -- |Assign fresh type var to meta
 metaAssignFreshTypeVar :: AST.Meta -> TInf AST.Meta
