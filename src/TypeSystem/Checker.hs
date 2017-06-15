@@ -660,7 +660,9 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
     decls <- addClassDeclsToGlobals decls''
     -- Get all class declarations
     m <- declClassMap
-    let classDecls = map idName (Map.keys m)
+    let classDecls = map idName (Map.keys m) ++ map declIdentifierString (filter (\d -> case d of
+            (AST.DeclC _, _) -> True
+            _ -> False) decls)
     -- Determine the strongly connected components (everything depends on all class members)
     ctx <- ask
     let deps = tInfSPLGraph decls classDecls
