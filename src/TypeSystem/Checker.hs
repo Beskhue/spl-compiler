@@ -672,8 +672,12 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
     spl <- local (const initCtx) (tInfSCCs decls sccDecls)
     s <- substitution
     st <- get
-
-    mapMeta (\m -> return $ m {AST.metaType = apply s (AST.metaType  m)}) (includes ++ spl)
+    -- Rewrite types in the meta
+    spl' <- mapMeta (\m -> return $ m {AST.metaType = apply s (AST.metaType  m)}) (includes ++ spl)
+    -- Rewrite class member declarations (currently in global scope) back into
+    -- the class declarations.
+    spl'' <- rewriteClassDecls spl'
+    removeGlobalScopeClassDecls spl''
     where
         numberAscending :: [[AST.Decl]] -> [[(Int, AST.Decl)]]
         numberAscending = numberAscending' 0
@@ -744,13 +748,61 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
             ctx' <- addGlobalToCtx ctx decl t
             let spl' = insertIntoSPL spl idx decl
             finalizeSCC spl' ctx' decls
+        rewriteClassDecls :: AST.SPL -> TInf AST.SPL
+        rewriteClassDecls spl = do
+            let assocList = map (\d ->
+                    (case declIdentifier d of
+                        Left i -> i
+                        _ -> undefined, d)) (filter (\d -> case declIdentifier d of
+                            Left _ -> True
+                            Right _ -> False) spl)
+            rewriteClassDecls' (Map.fromList assocList) spl
+            where
+            rewriteClassDecls' :: Map.Map AST.Identifier AST.Decl -> AST.SPL -> TInf AST.SPL
+            rewriteClassDecls' _ [] = return []
+            rewriteClassDecls' declMap (d@(AST.DeclC (AST.ClassDecl i vs fs, m'), m):ds) = do
+                vs' <- rewriteClassVarDecls' declMap i vs
+                fs' <- rewriteClassFunDecls' declMap i fs
+                return ((AST.DeclC (AST.ClassDecl i vs' fs', m'), m) : ds)
+                where
+                    rewriteClassVarDecls' :: Map.Map AST.Identifier AST.Decl -> AST.ClassIdentifier -> [AST.VarDecl] -> TInf [AST.VarDecl]
+                    rewriteClassVarDecls' _ _ [] = return []
+                    rewriteClassVarDecls' declMap i (d : ds) = do
+                        ds' <- rewriteClassVarDecls' declMap i ds
+                        let (Left i'@(_, m'')) = declIdentifier d
+                        let newIdentifier = (AST.Identifier $ classIDName i ++ "." ++ idName i', m'')
+                        let (Just (AST.DeclV d', _)) = Map.lookup newIdentifier declMap
+                        return $ d' : ds'
+                    rewriteClassFunDecls' :: Map.Map AST.Identifier AST.Decl -> AST.ClassIdentifier -> [AST.FunDecl] -> TInf [AST.FunDecl]
+                    rewriteClassFunDecls' _ _ [] = return []
+                    rewriteClassFunDecls' declMap i (d : ds) = do
+                        ds' <- rewriteClassFunDecls' declMap i ds
+                        let (Left i'@(_, m'')) = declIdentifier d
+                        let newIdentifier = (AST.Identifier $ classIDName i ++ "." ++ idName i', m'')
+                        let (Just (AST.DeclF d', _)) = Map.lookup newIdentifier declMap
+                        return $ d' : ds'
+            rewriteClassDecls' spl (d:ds) = do
+                ds' <- rewriteClassDecls' spl ds
+                return $ d : ds'
+        removeGlobalScopeClassDecls :: AST.SPL -> TInf AST.SPL
+        removeGlobalScopeClassDecls [] = return []
+        removeGlobalScopeClassDecls (d@(AST.DeclC _, _):ds) = do
+            ds' <- removeGlobalScopeClassDecls ds
+            return $ d : ds'
+        removeGlobalScopeClassDecls (d:ds) = do
+            ds' <- removeGlobalScopeClassDecls ds
+            let (Left s) = declIdentifier d
+            clss <- getDeclClass s
+            case clss of
+                Just _ -> return ds' -- Remove declarations belonging to a class
+                _ -> return $ d : ds'
 
 -- |Find the graph of (global) dependencies; a list of tuples of declarations, identifiers of those declarations,
 -- and the (global) identifiers those declarations depend on
 tInfSPLGraph :: AST.SPL -> [String] -> [(AST.Decl, String, [String])]
 tInfSPLGraph decls baseDependencies =
-    let globalVars = map declIdentifier decls in
-        map (\decl -> (decl, declIdentifier decl, (snd $ dependencies globalVars decl) ++ baseDependencies)) decls
+    let globalVars = map declIdentifierString decls in
+        map (\decl -> (decl, declIdentifierString decl, (snd $ dependencies globalVars decl) ++ baseDependencies)) decls
 
 tInfDecl :: Type -> AST.Decl -> TInf (AST.Decl, String)
 tInfDecl t (AST.DeclC decl, m) = do
@@ -965,7 +1017,12 @@ tInfStatement t (AST.StmtReturnVoid, m) = return ((AST.StmtReturnVoid, m), "", T
 ------------------------------------------------------------------------------------------------------------------------
 
 class DeclIdentifier a where
-    declIdentifier :: a -> String
+    declIdentifier :: a -> Either AST.Identifier AST.ClassIdentifier
+
+declIdentifierString :: DeclIdentifier a => a -> String
+declIdentifierString d = case declIdentifier d of
+    Left i -> idName i
+    Right i -> classIDName i
 
 instance DeclIdentifier AST.Decl where
     declIdentifier (AST.DeclC decl, _) = declIdentifier decl
@@ -973,17 +1030,17 @@ instance DeclIdentifier AST.Decl where
     declIdentifier (AST.DeclF decl, _) = declIdentifier decl
 
 instance DeclIdentifier AST.ClassDecl where
-    declIdentifier (AST.ClassDecl i _ _, _) = classIDName i
+    declIdentifier (AST.ClassDecl i _ _, _) = Right i
 
 instance DeclIdentifier AST.VarDecl where
-    declIdentifier (AST.VarDeclTyped _ i _, _) = idName i
-    declIdentifier (AST.VarDeclUntyped i _, _) = idName i
-    declIdentifier (AST.VarDeclTypedUnitialized _ i, _) = idName i
-    declIdentifier (AST.VarDeclUntypedUnitialized i, _) = idName i
+    declIdentifier (AST.VarDeclTyped _ i _, _) = Left i
+    declIdentifier (AST.VarDeclUntyped i _, _) = Left i
+    declIdentifier (AST.VarDeclTypedUnitialized _ i, _) = Left i
+    declIdentifier (AST.VarDeclUntypedUnitialized i, _) = Left i
 
 instance DeclIdentifier AST.FunDecl where
-    declIdentifier (AST.FunDeclTyped i _ _ _, _) = idName i
-    declIdentifier (AST.FunDeclUntyped i _ _, _) = idName i
+    declIdentifier (AST.FunDeclTyped i _ _ _, _) = Left i
+    declIdentifier (AST.FunDeclUntyped i _ _, _) = Left i
 
 class Dependencies a where
     dependencies :: [String] -> a -> ([String], [String]) -- tuple of global defs remaining and dependencies
