@@ -633,7 +633,7 @@ genExpression (AST.ExprClassMember e@(_, m) i, _) =
         Just (TClass (TClassIdentifier clss)) -> do
             Just (_, offsetMap) <- getClass (AST.ClassIdentifier clss, AST.emptyMeta)
             let Just offset = Map.lookup (Checker.idName i) offsetMap
-            genExpression e
+            genAddressOfExpression e
             push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber offset) Nothing
 
 genFields :: [AST.Field] -> Gen ()
@@ -666,7 +666,7 @@ genAddressOfExpression (AST.ExprClassMember e@(_, m) i, _) =
         Just (TClass (TClassIdentifier clss)) -> do
             Just (_, offsetMap) <- getClass (AST.ClassIdentifier clss, AST.emptyMeta)
             let Just offset = Map.lookup (Checker.idName i) offsetMap
-            genExpression e
+            genAddressOfExpression e
             push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber offset) Nothing
             push $ SSMLine Nothing (Just $ ICompute $ OAdd) Nothing
 genAddressOfExpression _ = throwError "cannot take address of a temporary value expression"
