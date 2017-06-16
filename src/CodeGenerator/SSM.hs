@@ -407,7 +407,10 @@ genDecl (AST.DeclF funDecl, _) = genFunDecl funDecl
 genClassDecl :: AST.ClassDecl -> Gen ()
 genClassDecl (AST.ClassDecl i _ fs, _) = do
     let className = Checker.classIDName i
-    push $ SSMLine (Just className) (Just $ ILoad $ LConstant $ ALabel $ className ++ "-__copy__") Nothing
+    Just (size, _) <- getClass i
+    push $ SSMLine (Just className) (Just $ ILoad $ LConstant $ ANumber $ size + 1) (Just $ "Type frame for " ++ className)
+    push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel $ className ++ "-__copy__") Nothing
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
     push $ SSMLine (Just className) (Just $ ILoad $ LConstant $ ALabel $ className ++ "-__destruct__") Nothing
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
@@ -690,25 +693,29 @@ genExpression (AST.ExprBinaryOp op e1@(_, m1) e2@(_, m2), _) = do
         Nothing -> throwError $ show m1 ++ show m2
 genExpression (AST.ExprNew i, _) = do
     Just (size, _) <- getClass i
-    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber size) (Just $ "allocate size for " ++ show i)
-    genFunCall "malloc" 1
-    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
-    -- Load return register (address of object) and store the type frame in it
-    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel $ Checker.classIDName i) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ size + 1) (Just $ "allocate heap size for " ++ show (Checker.classIDName i))
+    genFunCall "malloc" 1
+    --push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
+    -- Value of the return register is on the stack (address of object), store the type
+    -- frame at the address
     push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
+    --push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
+    --push $ SSMLine Nothing (Just $ IIO $ IOPrintInt) Nothing
     -- Load return register (address of object) twice, once for the fun call to init, and once as
     -- the return value of the new operator
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
     genFunCall (Checker.classIDName i ++ "-__init__") 1
+    -- Ignore return value of init fun call
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
 genExpression (AST.ExprDelete e@(_, m), _) = do
     case AST.metaType m of
         Just (TPointer (TClass (TClassIdentifier s))) -> do
             genExpression e
             genFunCall (s ++ "-__destruct__") 1
             -- Adjust stack pointer to point back to the address we added
-            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber 1) Nothing
+            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
             genFunCall "free" 1
         Just (TPointer (TClass _)) -> do
             -- Type of class is not known statically, so use the object's type frame
@@ -717,7 +724,7 @@ genExpression (AST.ExprDelete e@(_, m), _) = do
             -- Duplicate the address of the object and load the value pointed to (the object's type frame)
             push $ SSMLine Nothing (Just $ ILoad $ LStack $ ANumber $ -1) Nothing
             push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber 0) Nothing
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 2) Nothing -- Destructor is at the second place
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 4) Nothing -- Destructor is at the fourth place
             push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
             -- Jump to the destructor function pointed to
             push $ SSMLine Nothing (Just $ IControl CJumpSubroutine) Nothing
@@ -754,6 +761,11 @@ genCopyOfExpression e@(_, m) = case AST.metaType m of
         push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber size) Nothing
         -- Create pointer to expression we want to copy
         genAddressOfExpression e
+        -- Duplicate pointer and load the value pointed to, to the first place of
+        -- the space just created on the stack
+        push $ SSMLine Nothing (Just $ ILoad $ LStack $ ANumber 0) Nothing
+        push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber 0) Nothing
+        push $ SSMLine Nothing (Just $ IStore $ SStack $ ANumber $ -(size + 2)) Nothing
         -- Create pointer to the space we just created in the stack
         push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RStackPointer) Nothing
         push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ - (size + 1)) Nothing
@@ -762,6 +774,32 @@ genCopyOfExpression e@(_, m) = case AST.metaType m of
         genFunCall (s ++ "-__copy__") 2
         -- ignore the return value of the copy function, and jump to the start of the object space
         push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ - (1 + size)) Nothing
+    Just t@(TClass _) -> do
+        -- Type of class is not known statically, so use the object's type frame
+        -- First get the address of the object
+        genAddressOfExpression e
+        -- Duplicate the address of the object and load the value pointed to
+        -- this loads the size of the object from the object's type frame
+        push $ SSMLine Nothing (Just $ ILoad $ LStack $ ANumber $ -1) Nothing
+        push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber 0) Nothing
+        -- Duplicate size and get a pointer to after end of the object
+        push $ SSMLine Nothing (Just $ ILoad $ LStack $ ANumber $ -1) Nothing
+        push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RStackPointer) Nothing
+        push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+        push $ SSMLine Nothing (Just $ ILoad $ LStack $ ANumber $ -1) Nothing
+        -- Stack now has:
+        -- -4: address of object to be copied
+        -- -3: object size
+        -- -2: address of end of object
+        -- -1: address of end of object
+        -- 0: <-
+        push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
+
+        -- TODO: complete
+        push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 2) Nothing -- copy constructor is at the second place
+        push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+        -- Jump to the destructor function pointed to
+        push $ SSMLine Nothing (Just $ IControl CJumpSubroutine) Nothing
     _ -> genExpression e
 
 genAddressOfExpression :: AST.Expression -> Gen ()
@@ -890,7 +928,7 @@ instance Locals AST.FunDecl where
     locals (AST.FunDeclTyped _ args _ stmts, _) = locals stmts
 
 instance Locals [AST.Statement] where
-    locals stmts = concat $ map locals stmts
+    locals stmts = concatMap locals stmts
 
 instance Locals AST.Statement where
     locals (AST.StmtVarDecl _, m) = case AST.metaType m of
@@ -906,7 +944,7 @@ instance Locals AST.Statement where
 
 -- Push back the start of the stack
 genPushBackStack :: Int -> Gen ()
-genPushBackStack n = do
+genPushBackStack n =
     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber n) (Just $ "push back stack to make room for " ++ show n ++ "globals")
 
 genLibrary :: Gen ()
