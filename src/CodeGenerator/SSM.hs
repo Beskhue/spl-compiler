@@ -442,22 +442,37 @@ genFunDecl (AST.FunDeclTyped i args _ stmts, m) = do
         let scopes' = Stack.stackPush scopes (Map.fromList scope)
 
         --local (const (0, scopes')) (liftM id (mapM genStatement stmts))
-        local (const scopes') (genStatements stmts)
+        local (const scopes') (genScopedStatements stmts)
         push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
         push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
 
-genStatements :: [AST.Statement] -> Gen ()
-genStatements [] = destroyLocals
+genScopedStatements :: [AST.Statement] -> Gen ()
+genScopedStatements stmts = do
+    let objs = topScopeObjects stmts
+    genStatements objs stmts
     where
-        destroyLocals :: Gen ()
-        destroyLocals = do
-            scope <- ask
-            case Stack.stackPop Scope of
-                Just ()
-genStatements (stmt:stmts) = genStatement stmt stmts
+        topScopeObjects :: [AST.Statement] -> [AST.Identifier]
+        topScopeObjects [] = []
+        topScopeObjects ((AST.StmtVarDecl d@(_, m), _) : ds) = let Left i = Checker.declIdentifier d in
+            case AST.metaType m of
+                Just (Type.TClass _) -> i : topScopeObjects ds
+                _ -> topScopeObjects ds
+        topScopeObjects (s:stmts) = topScopeObjects stmts
 
-genStatement :: AST.Statement -> [AST.Statement] -> Gen ()
-genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e@(_, m), _), _) stmts = do
+genStatements :: [AST.Identifier] -> [AST.Statement] -> Gen ()
+genStatements topScopeObjects [] =
+    void $ mapM (\i@(_, m) -> do
+        genAddressOfExpression (AST.ExprIdentifier i, m)
+        let Just (TClass (TClassIdentifier s)) = AST.metaType m
+        genFunCall (s ++ "-__destruct__") 1) topScopeObjects
+genStatements topScopeObjects (stmt:stmts) = do
+    scopes <- genStatement stmt
+    case scopes of
+        Just scopes' -> local (const scopes') (genStatements topScopeObjects stmts)
+        _ -> genStatements topScopeObjects stmts
+
+genStatement :: AST.Statement -> Gen (Maybe VariableScopes)
+genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e@(_, m), _), _) = do
     -- Calculate size of the object that is to be allocated
     let (Just t) = AST.metaType m
     size <- sizeOf t
@@ -473,8 +488,8 @@ genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e@(_, m), _), _) stmts = do
         Just (scopes', scope) -> do
             let scope' = Map.insert (Checker.idName i) (offset + 1) scope
             incrementLocalAddressOffset size
-            local (const $ Stack.stackPush scopes' scope') (genStatements stmts)
-genStatement (AST.StmtVarDecl (AST.VarDeclTypedUnitialized _ i, m), _) stmts = do
+            return $ Just $ Stack.stackPush scopes' scope'
+genStatement (AST.StmtVarDecl (AST.VarDeclTypedUnitialized _ i, m), _) = do
     -- Calculate size of the object that is to be allocated
     let (Just t) = AST.metaType m
     size <- sizeOf t
@@ -485,63 +500,62 @@ genStatement (AST.StmtVarDecl (AST.VarDeclTypedUnitialized _ i, m), _) stmts = d
         Just (scopes', scope) -> do
             let scope' = Map.insert (Checker.idName i) (offset + 1) scope
             incrementLocalAddressOffset size
-            local (const $ Stack.stackPush scopes' scope') (genStatements stmts)
-genStatement (AST.StmtIf e s, _) stmts = do
+            return $ Just $ Stack.stackPush scopes' scope'
+genStatement (AST.StmtIf e s, _) = do
     genExpression e
     endLbl <- getFreshLabel
     push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ALabel endLbl) Nothing
-    genStatement s []
+    genStatement s
     push $ SSMLine (Just endLbl) (Just $ IControl $ CNop) Nothing
-    genStatements stmts
-genStatement (AST.StmtIfElse e s1 s2, _) stmts = do
+    return Nothing
+genStatement (AST.StmtIfElse e s1 s2, _) = do
     genExpression e
     elseLbl <- getFreshLabel
     endLbl <- getFreshLabel
     push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ALabel elseLbl) Nothing
-    genStatement s1 []
+    genStatement s1
     push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel endLbl) Nothing
     push $ SSMLine (Just elseLbl) (Just $ IControl $ CNop) Nothing
-    genStatement s2 []
+    genStatement s2
     push $ SSMLine (Just endLbl) (Just $ IControl CNop) Nothing
-    genStatements stmts
-genStatement (AST.StmtWhile e s, _) stmts = do
+    return Nothing
+genStatement (AST.StmtWhile e s, _) = do
     startLbl <- getFreshLabel
     endLbl <- getFreshLabel
     push $ SSMLine (Just startLbl) (Just $ IControl CNop) Nothing
     genExpression e
     push $ SSMLine Nothing (Just $ IControl $ CBranchFalse $ ALabel endLbl) Nothing
-    genStatement s []
+    genStatement s
     push $ SSMLine Nothing (Just $ IControl $ CBranchAlways $ ALabel startLbl) Nothing
     push $ SSMLine (Just endLbl) (Just $ IControl CNop) Nothing
-    genStatements stmts
-genStatement (AST.StmtBlock stmts', _) stmts = do
+    return Nothing
+genStatement (AST.StmtBlock stmts', _) = do
     scopes <- ask
-    local (const $ Stack.stackPush scopes emptyVariableScope) (genStatements stmts')
-    genStatements stmts
-genStatement (AST.StmtAssignment e1 e2, _) stmts = do
+    local (const $ Stack.stackPush scopes emptyVariableScope) (genScopedStatements stmts')
+    return Nothing
+genStatement (AST.StmtAssignment e1 e2, _) = do
     genCopyOfExpression e2
     genAddressOfExpression e1
     push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
-    genStatements stmts
-genStatement (AST.StmtFunCall e args, p) stmts = do
+    return Nothing
+genStatement (AST.StmtFunCall e args, p) = do
     genExpression (AST.ExprFunCall e args, p)
     -- Ignore return value
     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
-    genStatements stmts
-genStatement (AST.StmtReturn e, p) stmts = do
+    return Nothing
+genStatement (AST.StmtReturn e, p) = do
     genCopyOfExpression e
     push $ SSMLine Nothing (Just $ IStore $ SRegister $ ARegister RReturnRegister) Nothing
-    genStatement (AST.StmtReturnVoid, p) stmts
-genStatement (AST.StmtReturnVoid, _) stmts = do
+    genStatement (AST.StmtReturnVoid, p)
+genStatement (AST.StmtReturnVoid, _) = do
     push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
-    genStatements stmts
-genStatement (AST.StmtDelete e, m) stmts = do
+    return Nothing
+genStatement (AST.StmtDelete e, m) = do
      genExpression (AST.ExprDelete e, m)
      -- Ignore return value
      push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
-     genStatements stmts
-
+     return Nothing
 
 genExpression :: AST.Expression -> Gen ()
 genExpression (AST.ExprIdentifier i, m) = do
@@ -670,9 +684,14 @@ genExpression (AST.ExprNew i, _) = do
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
     genFunCall (Checker.classIDName i ++ "-__init__") 1
 genExpression (AST.ExprDelete e@(_, m), _) = do
-    genExpression e
-    -- todo: call destructor
-    genFunCall "free" 1
+    case AST.metaType m of
+        Just (TPointer (TClass (TClassIdentifier s))) -> do
+            genExpression e
+            genFunCall (s ++ "-__destruct__") 1
+            -- Adjust stack pointer to point back to the address we added
+            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber 1) Nothing
+            genFunCall "free" 1
+        Just t -> throwError $ "delete operator does not know type of obj: " ++ AST.prettyPrint (Checker.translateType m t)
 genExpression (AST.ExprClassMember e@(_, m) i, m') =
     case AST.metaType m of
         Just (TClass (TClassIdentifier clss)) -> do
