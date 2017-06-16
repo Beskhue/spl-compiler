@@ -324,7 +324,7 @@ setClass i info = do
 sizeOf :: Type.Type -> Gen Int
 sizeOf (Type.TClass (Type.TClassIdentifier i)) = do
     Just (size, _) <- getClass (AST.ClassIdentifier i, AST.emptyMeta)
-    return size
+    return $ size + 1
 sizeOf _ = return 1
 
 --------------------------------------------------------------------------------
@@ -384,10 +384,18 @@ genSPL decls = do
 collectClasses :: AST.SPL -> Gen ()
 collectClasses [] = return ()
 collectClasses ((AST.DeclC (AST.ClassDecl i vs _, _), _) : ds) = do
-    let size = length vs
+    let memberTypes = map (\(_, m) -> let Just t = AST.metaType m in t) vs
     let strs = map Checker.declIdentifierString vs
-    let assoc = zip strs [0..]
+    sizes <- mapM sizeOf memberTypes
+    let size = sum sizes
+    let offsets = scanl1 (+) (0 : init sizes)
+    let assoc = zip strs offsets
     setClass i (size, Map.fromList assoc)
+
+    --let size = length vs
+    --let strs = map Checker.declIdentifierString vs
+    --let assoc = zip strs [0..]
+    --setClass i (size, Map.fromList assoc)
     collectClasses ds
 collectClasses (d:ds) = collectClasses ds
 
@@ -397,7 +405,13 @@ genDecl (AST.DeclV varDecl, _) = genVarDecl varDecl
 genDecl (AST.DeclF funDecl, _) = genFunDecl funDecl
 
 genClassDecl :: AST.ClassDecl -> Gen ()
-genClassDecl (AST.ClassDecl i _ fs, _) = genClassDecl' i fs
+genClassDecl (AST.ClassDecl i _ fs, _) = do
+    let className = Checker.classIDName i
+    push $ SSMLine (Just className) (Just $ ILoad $ LConstant $ ALabel $ className ++ "-__copy__") Nothing
+    push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
+    push $ SSMLine (Just className) (Just $ ILoad $ LConstant $ ALabel $ className ++ "-__destruct__") Nothing
+    push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
+    genClassDecl' i fs
     where
         genClassDecl' :: AST.ClassIdentifier -> [AST.FunDecl] -> Gen ()
         genClassDecl' _ [] = return ()
@@ -678,8 +692,13 @@ genExpression (AST.ExprNew i, _) = do
     Just (size, _) <- getClass i
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber size) (Just $ "allocate size for " ++ show i)
     genFunCall "malloc" 1
-     -- Load return register twice, once for the fun call to init, and once as
-     -- the return value of the new operator
+    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
+    -- Load return register (address of object) and store the type frame in it
+    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel $ Checker.classIDName i) Nothing
+    push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
+    -- Load return register (address of object) twice, once for the fun call to init, and once as
+    -- the return value of the new operator
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
     genFunCall (Checker.classIDName i ++ "-__init__") 1
@@ -691,7 +710,20 @@ genExpression (AST.ExprDelete e@(_, m), _) = do
             -- Adjust stack pointer to point back to the address we added
             push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber 1) Nothing
             genFunCall "free" 1
-        Just t -> throwError $ show e ++ "delete operator does not know type of obj: " ++ AST.prettyPrint (Checker.translateType m t)
+        Just (TPointer (TClass _)) -> do
+            -- Type of class is not known statically, so use the object's type frame
+            -- First get the address of the object
+            genExpression e
+            -- Duplicate the address of the object and load the value pointed to (the object's type frame)
+            push $ SSMLine Nothing (Just $ ILoad $ LStack $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber 0) Nothing
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 2) Nothing -- Destructor is at the second place
+            push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+            -- Jump to the destructor function pointed to
+            push $ SSMLine Nothing (Just $ IControl CJumpSubroutine) Nothing
+            -- Free memory
+            genFunCall "free" 1
+        -- Just t -> throwError $ show e ++ "delete operator does not know type of obj: " ++ AST.prettyPrint (Checker.translateType m t)
 genExpression (AST.ExprClassMember e@(_, m) i, m') =
     case AST.metaType m of
         Just (TClass (TClassIdentifier clss)) -> do
@@ -703,7 +735,7 @@ genExpression (AST.ExprClassMember e@(_, m) i, m') =
                     Just (_, offsetMap) <- getClass (AST.ClassIdentifier clss, AST.emptyMeta)
                     let Just offset = Map.lookup (Checker.idName i) offsetMap
                     genAddressOfExpression e
-                    push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber offset) Nothing
+                    push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber $ offset + 1) Nothing
 
 genFields :: [AST.Field] -> Gen ()
 genFields fields = liftM id (mapM genField fields) >> return ()
@@ -759,7 +791,7 @@ genAddressOfExpression (AST.ExprClassMember e@(_, m) i, m') =
                     Just (_, offsetMap) <- getClass (AST.ClassIdentifier clss, AST.emptyMeta)
                     let Just offset = Map.lookup (Checker.idName i) offsetMap
                     genAddressOfExpression e
-                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber offset) Nothing
+                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ offset + 1) Nothing
                     push $ SSMLine Nothing (Just $ ICompute $ OAdd) Nothing
 genAddressOfExpression _ = throwError "cannot take address of a temporary value expression"
 
