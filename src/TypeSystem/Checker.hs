@@ -140,7 +140,8 @@ nullSubstitution = Map.empty
 -- |Compose two substitutions: substitute the types in s2 using the s1 substitution, and merge the resulting
 -- substitution back with s1
 composeSubstitution :: Substitution -> Substitution -> Substitution
-composeSubstitution s1 s2 = Map.map (apply s1) s2 `Map.union` s1
+composeSubstitution s1 s2 = Map.map (apply s2) s1 `Map.union` s2
+--composeSubstitution s1 s2 = Map.map (apply s1) s2 `Map.union` s1
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -332,25 +333,22 @@ varBind :: Pos.Pos -> String -> Type -> TInf Substitution
 varBind p u t
     | t == TVar u                   = return nullSubstitution
     | u `Set.member` freeTypeVars t = throwError $ TInfError (TInfErrorOccursCheck u t) p
-    | otherwise                     = do
-        let s = Map.singleton u t
-        st <- get
-        put st {tInfSubstitution = s `composeSubstitution` tInfSubstitution st }
-        return s
+    | otherwise                     = return $ Map.singleton u t
 
 -- |Unify two types (using the most general unifier)
 mgu :: AST.Meta -> Type -> Type -> TInf Substitution
 mgu m t1 t2 = do
     t1' <- substitute t1
     t2' <- substitute t2
-    s <- mgu' (AST.metaPos m) t1' t2'
-    t <- substitute t1
-    case AST.metaType m of
-        Just t' -> do
-            --s' <- mgu' (AST.metaPos m) t' t
-            s' <- metaMGU m t1'
-            return $ s' `composeSubstitution` s
-        _ -> return s
+    s1 <- mgu' (AST.metaPos m) t1' t2'
+    t <- substitute t1'
+    s2 <- metaMGU m t
+
+    let sCombined = s1 `composeSubstitution` s2
+    st <- get
+    let sNew = tInfSubstitution st `composeSubstitution` sCombined
+    put st {tInfSubstitution = sNew}
+    return sCombined
     where
     mgu' :: Pos.Pos -> Type -> Type -> TInf Substitution
     mgu' p (TVar u) t                 = varBind p u t
@@ -367,7 +365,8 @@ mgu m t1 t2 = do
     mgu' p (TFunction (arg:args) body) (TFunction (arg':args') body') = do
         s1 <- mgu' p arg arg'
         s2 <- mgu' p (apply s1 (TFunction args body)) (apply s1 (TFunction args' body'))
-        return $ s2 `composeSubstitution` s1
+        --return $ s2 `composeSubstitution` s1
+        return $ s1 `composeSubstitution` s2
     mgu' p (TPointer t) (TPointer t') = mgu' p t t'
     mgu' p TVoid TVoid                = return nullSubstitution
     mgu' p TType TType                = return nullSubstitution
@@ -417,8 +416,10 @@ tInfId t i@(_, m) = do
     t' <- tInfVarName (AST.metaPos m) (idName i)
     void $ mgu m t t'
 
-tInfClassId :: AST.ClassIdentifier -> TInf Type
-tInfClassId i@(_, m) = tInfVarName (AST.metaPos m) (classIDName i)
+tInfClassId :: Type -> AST.ClassIdentifier -> TInf ()
+tInfClassId t i@(_, m) = do
+    t' <- tInfVarName (AST.metaPos m) (classIDName i)
+    void $ mgu m t t'
 
 -- |Perform type inference on an AST constant
 tInfConst :: Type -> AST.Constant -> TInf ()
@@ -438,9 +439,9 @@ tInfExprTyped e = do
 
 -- |Perform type inference on an AST expression
 tInfExpr :: Type -> AST.Expression -> TInf ()
-tInfExpr t (AST.ExprIdentifier id, m) = do
+tInfExpr t (AST.ExprIdentifier i, m) = do
     metaMGU m t
-    tInfId t id
+    tInfId t i
 tInfExpr t (AST.ExprField e fields, m) = do
     metaMGU m t
     t' <- newTypeVar "fld"
@@ -467,25 +468,30 @@ tInfExpr t (AST.ExprUnaryOp op e, m) = do
 tInfExpr t (AST.ExprBinaryOp op e1 e2, m) = do
     metaMGU m t
     tInfBinaryOp t op e1 e2
-tInfExpr t (AST.ExprNew i@(_, m'), m) = do
-    t' <- tInfClassId i
-    mgu m' t' TType
+tInfExpr t (AST.ExprNew i, m) = do
+    tInfClassId TType i
     void $ mgu m t (TPointer $ TClass $ TClassIdentifier $ classIDName i)
-tInfExpr t (AST.ExprDelete e@(_, m'), m) = do
+tInfExpr t (AST.ExprDelete e, m) = do
     t' <- newTypeVar "class"
-    tInfExpr (TPointer $ TClass t') e
-    t'' <- substitute t'
+    --tInfExpr (TPointer $ TClass t') e
+    tInfExpr (TPointer t') e
     void $ mgu m t TVoid
-tInfExpr t (AST.ExprClassMember e i, m) = do
+tInfExpr t (AST.ExprClassMember e@(_, m') i, m) = do
     metaMGU m t
+
+    --tVar <- newTypeVar "class"
+    --let t' = TClass tVar
+    --tInfExpr t' e
+    --t'' <- substitute t'
+
     t' <- newTypeVar "class"
     tInfExpr t' e
     t'' <- substitute t'
     case t'' of
         TClass (TClassIdentifier clss) -> do
-            let newIdentifier = (AST.Identifier $ clss ++ "." ++ idName i, m)
+            let newIdentifier = (AST.Identifier $ clss ++ "." ++ idName i, AST.emptyMeta)
             tInfId t newIdentifier
-        _ -> throwError $ TInfError TInfErrorCannotInferClass (AST.metaPos m)
+        _ -> throwError $ TInfError (TInfErrorGeneric $ show t'') (AST.metaPos m')--throwError $ TInfError TInfErrorCannotInferClass (AST.metaPos m')
 
 tTraverseFields :: (Maybe AST.Meta) -> Type -> Type -> [AST.Field] -> TInf ()
 tTraverseFields (Just m) t t' [] = void $ mgu (m {AST.metaType = Nothing}) t t'
@@ -538,7 +544,9 @@ tInfUnaryOp t (AST.UnaryOpReference, m) e =
             tInfExpr t' e
             void $ mgu m t (TPointer t')
         _ -> throwError $ TInfError TInfErrorPersistentValueRequired (AST.metaPos m)
-tInfUnaryOp t (AST.UnaryOpDereference, m) e = tInfExpr (TPointer t) e
+tInfUnaryOp t (AST.UnaryOpDereference, m) e = do
+    metaMGU m t
+    tInfExpr (TPointer t) e
 
 tInfBinaryOp :: Type -> AST.BinaryOperator -> AST.Expression -> AST.Expression -> TInf ()
 tInfBinaryOp t (AST.BinaryOpOr, m) e1 e2 = do
@@ -685,7 +693,7 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
     s <- substitution
     st <- get
     -- Rewrite types in the meta
-    spl' <- mapMeta (\m -> return $ m {AST.metaType = apply s (AST.metaType  m)}) (includes ++ spl)
+    spl' <- mapMeta (\m -> return $ m {AST.metaType = apply s (AST.metaType m)}) (includes ++ spl)
     -- Rewrite class member declarations (currently in global scope) back into
     -- the class declarations.
     spl'' <- rewriteClassDecls spl'
@@ -926,8 +934,9 @@ tInfFunDecl t decl =
 
                 getArgsTypes :: [AST.Identifier] -> TInf [Type]
                 getArgsTypes [] = return []
-                getArgsTypes (arg@(_, m):args) = do
-                    t <- tInfVarName (AST.metaPos m) (idName arg)
+                getArgsTypes (arg:args) = do
+                    t <- newTypeVar "arg"
+                    tInfId t arg
                     ts <- getArgsTypes args
                     t' <- substitute t
                     return $ t':ts
@@ -1037,10 +1046,11 @@ tInfStatement t (AST.StmtReturn expr, m) = do
     tInfExpr t expr
     return ((AST.StmtReturn expr, m), "", True)
 tInfStatement t (AST.StmtReturnVoid, m) = return ((AST.StmtReturnVoid, m), "", True)
-tInfStatement t (AST.StmtDelete expr@(_, m'), m) = do
+tInfStatement t (AST.StmtDelete expr, m) = do
     t' <- newTypeVar "class"
-    tInfExpr (TPointer $ TClass t') expr
-    t'' <- substitute t'
+    --tInfExpr (TPointer $ TClass t') expr -- doesn't work
+    tInfExpr (TPointer t') expr -- works
+    --tInfExpr t' expr -- works
     mgu m t TVoid
     return ((AST.StmtDelete expr, m), "", False)
 
