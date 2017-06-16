@@ -100,8 +100,8 @@ typedASTToCtx (decl:decls) =
 
 checkWithIncludes :: AST.SPL -> IO [AST.SPL]
 checkWithIncludes spl = do
-    r <- checkWithIncludes' spl [] [] [] Map.empty
-    return $ fst r
+    (r, _, _) <- checkWithIncludes' spl [] [] [] Map.empty
+    return r
     where
         checkWithIncludes' ::
             AST.SPL ->
@@ -109,14 +109,14 @@ checkWithIncludes spl = do
             [AST.SPL] ->
             [String] ->
             Map.Map String Type.Scheme ->
-            IO ([AST.SPL], Map.Map String Type.Scheme)
+            IO ([AST.SPL], [String], Map.Map String Type.Scheme)
         checkWithIncludes' (d@(AST.DeclI (AST.IncludeDecl s, _), _):decls) includeDecls spls included accum =
             if s `elem` included
                 then checkWithIncludes' decls (d:includeDecls) spls included accum
                 else do
                     spl <- Lib.readAndParse s
-                    (r, schemes) <- checkWithIncludes' spl [] spls (s : included) accum
-                    checkWithIncludes' decls (d:includeDecls) (r ++ spls) (s : included) (Map.union accum schemes)
+                    (r, included', schemes) <- checkWithIncludes' spl [] [] (s : included) accum
+                    checkWithIncludes' decls (d:includeDecls) (r ++ spls) (s : included' ++ included) (Map.union accum schemes)
         checkWithIncludes' decls includeDecls spls included accum = do
             spl <- Lib.eitherToRight $ Checker.check False (Checker.TypeCtx accum) decls
-            return ((includeDecls ++ spl) : spls, Map.union accum (typedASTToCtx spl))
+            return ((includeDecls ++ spl) : spls, included, Map.union accum (typedASTToCtx spl))
