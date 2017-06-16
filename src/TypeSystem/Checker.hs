@@ -412,8 +412,10 @@ tInfVarName p varName = do
     instantiate scheme
 
 -- |Perform type inference on an AST identifier
-tInfId :: AST.Identifier -> TInf Type
-tInfId i@(_, m) = tInfVarName (AST.metaPos m) (idName i)
+tInfId :: Type -> AST.Identifier -> TInf ()
+tInfId t i@(_, m) = do
+    t' <- tInfVarName (AST.metaPos m) (idName i)
+    void $ mgu m t t'
 
 tInfClassId :: AST.ClassIdentifier -> TInf Type
 tInfClassId i@(_, m) = tInfVarName (AST.metaPos m) (classIDName i)
@@ -437,8 +439,8 @@ tInfExprTyped e = do
 -- |Perform type inference on an AST expression
 tInfExpr :: Type -> AST.Expression -> TInf ()
 tInfExpr t (AST.ExprIdentifier id, m) = do
-    t' <- tInfId id
-    void $ mgu m t t'
+    metaMGU m t
+    tInfId t id
 tInfExpr t (AST.ExprField e fields, m) = do
     metaMGU m t
     t' <- newTypeVar "fld"
@@ -474,15 +476,15 @@ tInfExpr t (AST.ExprDelete e@(_, m'), m) = do
     tInfExpr (TPointer $ TClass t') e
     t'' <- substitute t'
     void $ mgu m t TVoid
-tInfExpr t (AST.ExprClassMember e i, m)= do
+tInfExpr t (AST.ExprClassMember e i, m) = do
+    metaMGU m t
     t' <- newTypeVar "class"
     tInfExpr t' e
     t'' <- substitute t'
     case t'' of
         TClass (TClassIdentifier clss) -> do
             let newIdentifier = (AST.Identifier $ clss ++ "." ++ idName i, m)
-            t''' <- tInfId newIdentifier
-            void $ mgu m t t'''
+            tInfId t newIdentifier
         _ -> throwError $ TInfError TInfErrorCannotInferClass (AST.metaPos m)
 
 tTraverseFields :: (Maybe AST.Meta) -> Type -> Type -> [AST.Field] -> TInf ()
@@ -821,12 +823,15 @@ tInfSPLGraph decls baseDependencies =
 
 tInfDecl :: Type -> AST.Decl -> TInf (AST.Decl, String)
 tInfDecl t (AST.DeclC decl, m) = do
+    metaMGU m t
     (decl', varName) <- tInfClassDecl t decl
     return ((AST.DeclC decl', m), varName)
 tInfDecl t (AST.DeclV decl, m) = do
+    metaMGU m t
     (decl', varName) <- tInfVarDecl t decl
     return ((AST.DeclV decl', m), varName)
 tInfDecl t (AST.DeclF decl, m) = do
+    metaMGU m t
     (decl', varName) <- tInfFunDecl t decl
     return ((AST.DeclF decl', m), varName)
 
@@ -860,15 +865,17 @@ tInfVarDecl t decl =
         (AST.VarDeclUntypedUnitialized identifier, m) -> tInfVarDeclUninitialized' m t identifier
     where
         tInfVarDecl' :: AST.Meta -> Type -> AST.Identifier -> AST.Expression -> TInf (AST.VarDecl, String)
-        tInfVarDecl' m t identifier expr = do
+        tInfVarDecl' m t identifier@(_, m') expr = do
             metaMGU m t
+            metaMGU m' t
             tInfExpr t expr
             t' <- substitute t
             let t'' = translateType m t'
             return ((AST.VarDeclTyped t'' identifier expr, m), idName identifier)
         tInfVarDeclUninitialized' :: AST.Meta-> Type -> AST.Identifier -> TInf (AST.VarDecl, String)
-        tInfVarDeclUninitialized' m t identifier = do
+        tInfVarDeclUninitialized' m t identifier@(_, m') = do
             metaMGU m t
+            metaMGU m' t
             let t' = translateType m t
             return ((AST.VarDeclTypedUnitialized t' identifier, m), idName identifier)
 
