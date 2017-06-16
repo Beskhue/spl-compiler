@@ -412,7 +412,7 @@ genClassDecl (AST.ClassDecl i _ fs, _) = do
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel $ className ++ "-__copy__") Nothing
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
-    push $ SSMLine (Just className) (Just $ ILoad $ LConstant $ ALabel $ className ++ "-__destruct__") Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel $ className ++ "-__destruct__") Nothing
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
     genClassDecl' i fs
     where
