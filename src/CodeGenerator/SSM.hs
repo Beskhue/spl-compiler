@@ -691,7 +691,22 @@ genExpression (AST.ExprBinaryOp op e1@(_, m1) e2@(_, m2), _) = do
                     genExpression e2
                     genBinaryOp op t1 t2
         Nothing -> throwError $ show m1 ++ show m2
-genExpression (AST.ExprNew i, _) = do
+genExpression (AST.ExprClassConstructor i es, m) = do
+    let Just t@(TClass (TClassIdentifier s)) = AST.metaType m
+    size <- sizeOf t
+    -- Make room for the object by incrementing the stack pointer
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber size) Nothing
+    -- Evaluate exrpessions
+    mapM genCopyOfExpression es
+    -- Create pointer to the space we just created in the stack
+    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RStackPointer) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ - (size + 1)) Nothing
+    push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
+    -- use copy constructor
+    genFunCall (s ++ "-__init__") (1 + length es)
+    -- ignore the return value of the copy function, and jump to the start of the object space
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ - (1 + size)) Nothing
+genExpression (AST.ExprNew (AST.ExprClassConstructor i es, _), _) = do
     Just (size, _) <- getClass i
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel $ Checker.classIDName i) Nothing
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ size + 1) (Just $ "allocate heap size for " ++ show (Checker.classIDName i))
@@ -700,15 +715,24 @@ genExpression (AST.ExprNew i, _) = do
     -- Value of the return register is on the stack (address of object), store the type
     -- frame at the address
     push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
-    --push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
-    --push $ SSMLine Nothing (Just $ IIO $ IOPrintInt) Nothing
     -- Load return register (address of object) twice, once for the fun call to init, and once as
     -- the return value of the new operator
+    mapM genCopyOfExpression (reverse es)
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
-    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
-    genFunCall (Checker.classIDName i ++ "-__init__") 1
+    genFunCall (Checker.classIDName i ++ "-__init__") (1 + length es)
     -- Ignore return value of init fun call
-    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
+genExpression (AST.ExprNew e@(_, m), _) = do
+    let Just t = AST.metaType m
+    size <- sizeOf t
+    when (size > 1) (throwError $ "can only dynamically copy objects of size 1")
+    genCopyOfExpression e
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber size) (Just "allocate heap size for expression")
+    genFunCall "malloc" 1
+    -- Value of the return register is on the stack (address of allocated space),
+    -- store the copy at the address
+    push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
 genExpression (AST.ExprDelete e@(_, m), _) = do
     case AST.metaType m of
         Just (TPointer (TClass (TClassIdentifier s))) -> do
@@ -754,6 +778,7 @@ genFields fields = liftM id (mapM genField fields) >> return ()
         genField (AST.FieldSnd, _) = push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber $ -1) Nothing
 
 genCopyOfExpression :: AST.Expression -> Gen ()
+genCopyOfExpression e@(AST.ExprClassConstructor _ _, _) = genExpression e
 genCopyOfExpression e@(_, m) = case AST.metaType m of
     Just t@(TClass (TClassIdentifier s)) -> do --todo do not do this special case if the class is being *initialized*
         size <- sizeOf t
@@ -831,7 +856,7 @@ genAddressOfExpression (AST.ExprClassMember e@(_, m) i, m') =
                     genAddressOfExpression e
                     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ offset + 1) Nothing
                     push $ SSMLine Nothing (Just $ ICompute $ OAdd) Nothing
-genAddressOfExpression _ = throwError "cannot take address of a temporary value expression"
+genAddressOfExpression (i, m) = throwError $ "cannot take address of a temporary value expression " ++ show i ++ " " ++ show (AST.metaPos m)
 
 genAddressOfFields :: [AST.Field] -> Gen ()
 genAddressOfFields fields = do

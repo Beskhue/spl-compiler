@@ -352,7 +352,8 @@ pExprBase = do
         try pExpressionUnaryOperator
          <|> pExprGroupOrTuple
          <|> pExpressionConst
-         <|> pExpressionClass
+         <|> pExpressionClassConstructor
+         <|> pExpressionNewDelete
          <|> pExpressionIdentifier <?> "a base expression")
     t <- pPeek
     case t of
@@ -430,11 +431,20 @@ pExprGroupOrTuple = do
             <?> "a tuple"
         )
 
-pExpressionClass :: Parser AST.Expression
-pExpressionClass = (do
+pExpressionClassConstructor :: Parser AST.Expression
+pExpressionClassConstructor = (do
+        i@(_, m) <- pClassIdentifier
+        tok $ TPunctuator PParenOpen
+        es <- pFunArgs
+        tok $ TPunctuator PParenClose
+        return (AST.ExprClassConstructor i es, m)
+    ) <?> "a class constructor"
+
+pExpressionNewDelete :: Parser AST.Expression
+pExpressionNewDelete = (do
         tokenP <- tok $ TKeyword KNew
-        classIdentifier <- pClassIdentifier
-        return (AST.ExprNew classIdentifier, AST.metaFromPos $ Data.Token.pos tokenP))
+        expr <- pExpression
+        return (AST.ExprNew expr, AST.metaFromPos $ Data.Token.pos tokenP))
     <|> (do
         tokenP <- tok $ TKeyword KDelete
         expr <- pExpression

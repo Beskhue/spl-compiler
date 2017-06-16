@@ -30,7 +30,7 @@ instance PrettyPrint SPL where
 -}
 
 instance (PrettyPrint a) => PrettyPrint [a] where
-    prettyPrint ss = printMultiple 0 ss
+    prettyPrint = printMultiple 0
         where
             printMultiple _ [] = ""
             printMultiple 0 (s:ss) = prettyPrint s ++ printMultiple 1 ss
@@ -62,9 +62,9 @@ instance (ASTEq Decl) where
     astEq (DeclF f1, _) (DeclF f2, _) = astEq f1 f2
     astEq _ _ = False
 
-data IncludeDecl'    = IncludeDecl String
-                       deriving (Eq, Show)
-type IncludeDecl     = (IncludeDecl', Meta)
+newtype IncludeDecl'    = IncludeDecl String
+                          deriving (Eq, Show)
+type IncludeDecl        = (IncludeDecl', Meta)
 
 instance PrettyPrint IncludeDecl where
     prettyPrint (IncludeDecl filePath, _) = "#include \"" ++ filePath ++ "\""
@@ -246,7 +246,8 @@ data Expression'     = ExprIdentifier Identifier
                      | ExprTuple Expression Expression
                      | ExprUnaryOp UnaryOperator Expression
                      | ExprBinaryOp BinaryOperator Expression Expression
-                     | ExprNew ClassIdentifier
+                     | ExprClassConstructor ClassIdentifier [Expression]
+                     | ExprNew Expression
                      | ExprDelete Expression
                      | ExprClassMember Expression Identifier
                        deriving (Eq, Show)
@@ -283,7 +284,13 @@ instance PrettyPrint Expression where
                     then "(" ++ prettyPrint e ++ ")"
                     else prettyPrint e
                 _ -> prettyPrint e
-    prettyPrint (ExprNew i, _) = "new " ++ prettyPrint i
+    prettyPrint (ExprClassConstructor i es, _) = prettyPrint i ++ "(" ++ printArgs 0 es ++ ")"
+        where
+            printArgs :: Int -> [Expression] -> String
+            printArgs _ [] = ""
+            printArgs 0 (e:es) = prettyPrint e ++ printArgs 1 es
+            printArgs n (e:es) = ", " ++ prettyPrint e ++ printArgs (n+1) es
+    prettyPrint (ExprNew e, _) = "new " ++ prettyPrint e
     prettyPrint (ExprDelete i, _) = "delete " ++ prettyPrint i
     prettyPrint (ExprClassMember e i, _) = case e of
         (ExprUnaryOp _ _, _) -> "(" ++ prettyPrint e ++ ")"

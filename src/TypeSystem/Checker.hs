@@ -478,12 +478,30 @@ tInfExpr t (AST.ExprUnaryOp op e, m) = do
 tInfExpr t (AST.ExprBinaryOp op e1 e2, m) = do
     metaMGU m t
     tInfBinaryOp t op e1 e2
-tInfExpr t (AST.ExprNew i, m) = do
-    tInfClassId TType i
-    void $ mgu m t (TPointer $ TClass $ TClassIdentifier $ classIDName i)
+tInfExpr t (AST.ExprClassConstructor i args, m) = do
+    let m' = m {AST.metaType = Nothing}
+    let newIdentifier = classIDName i ++ "." ++ "__init__"
+
+    -- Type inference/checking on the __init__ method of the class
+    t' <- tInfVarName (AST.metaPos m) newIdentifier
+    ts <- mapM (const $ newTypeVar "arg") args
+    mgu m' (TFunction (TPointer (TClass $ TClassIdentifier $ classIDName i) : ts) TVoid) t'
+
+    -- Type inference/checking on the constructor arguments
+    t' <- substitute t'
+    let TFunction argTypes _ = t'
+    tInfExprs (tail argTypes) args
+
+    -- Type of the constructor expression
+    void $ mgu m t (TClass $ TClassIdentifier $ classIDName i)
+
+tInfExpr t (AST.ExprNew e, m) = do
+    t' <- newTypeVar "a"
+    tInfExpr t' e
+    void $ mgu m t (TPointer t')
 tInfExpr t (AST.ExprDelete e, m) = do
-    t' <- newTypeVar "class"
-    tInfExpr (TPointer $ TClass t') e
+    t' <- newTypeVar "a"
+    tInfExpr (TPointer t') e
     void $ mgu m t TVoid
 tInfExpr t (AST.ExprClassMember e@(_, m') i, m) = do
     metaMGU m t
@@ -1056,8 +1074,8 @@ tInfStatement t (AST.StmtReturn expr, m) = do
     return ((AST.StmtReturn expr, m), "", True)
 tInfStatement t (AST.StmtReturnVoid, m) = return ((AST.StmtReturnVoid, m), "", True)
 tInfStatement t (AST.StmtDelete expr, m) = do
-    t' <- newTypeVar "class"
-    tInfExpr (TPointer $ TClass t') expr
+    t' <- newTypeVar "a"
+    tInfExpr (TPointer t') expr
     mgu m t TVoid
     return ((AST.StmtDelete expr, m), "", False)
 
@@ -1182,6 +1200,7 @@ instance Dependencies AST.Expression where
         let (_, deps) = dependencies globalDefs e1 in
             let (_, deps') = dependencies globalDefs e2 in
                 (globalDefs, deps ++ deps')
+    dependencies globalDefs (AST.ExprClassConstructor i es, _) = dependencies globalDefs es
     dependencies globalDefs (AST.ExprNew i, _) = dependencies globalDefs i
     dependencies globalDefs (AST.ExprDelete e, _) = dependencies globalDefs e
     dependencies globalDefs (AST.ExprClassMember e i, _) = dependencies globalDefs e
@@ -1445,10 +1464,15 @@ instance RewriteAST AST.Expression where
         e1' <- mapMeta f e1
         e2' <- mapMeta f e2
         return (AST.ExprBinaryOp op' e1' e2', m')
-    mapMeta f (AST.ExprNew i, m) = do
+    mapMeta f (AST.ExprClassConstructor i es, m) = do
         m' <- f m
         i' <- mapMeta f i
-        return (AST.ExprNew i', m')
+        es' <- mapMeta f es
+        return (AST.ExprClassConstructor i' es', m')
+    mapMeta f (AST.ExprNew e, m) = do
+        m' <- f m
+        e' <- mapMeta f e
+        return (AST.ExprNew e', m')
     mapMeta f (AST.ExprDelete e, m) = do
         m' <- f m
         e' <- mapMeta f e
