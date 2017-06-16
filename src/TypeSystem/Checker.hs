@@ -95,21 +95,33 @@ instance Types Type where
         case Map.lookup v s of
             Just t -> t
             _ -> TVar v
-    apply s (TList l) = TList $ apply s l
-    apply s (TTuple t1 t2) = TTuple (apply s t1) (apply s t2)
-    apply s (TFunction arg body) = TFunction (apply s arg) (apply s body)
-    apply s (TPointer t) = TPointer $ apply s t
-    apply s t = t
+    apply _ TBool                  = TBool
+    apply _ TInt                   = TInt
+    apply _ TChar                  = TChar
+    apply s (TList l)              = TList $ apply s l
+    apply s (TTuple t1 t2)         = TTuple (apply s t1) (apply s t2)
+    apply s (TFunction arg body)   = TFunction (apply s arg) (apply s body)
+    apply s (TPointer t)           = TPointer $ apply s t
+    apply _ TVoid                  = TVoid
+    apply _ TType                  = TType
+    apply s (TClass t)             = TClass $ apply s t
+    apply _ t@(TClassIdentifier _) = t
 
     applyOnlyRename s (TVar v) =
         case Map.lookup v s of
             Just (TVar v') -> TVar v'
             _ -> TVar v
-    applyOnlyRename s (TList l) = TList $ applyOnlyRename s l
-    applyOnlyRename s (TTuple t1 t2) = TTuple (applyOnlyRename s t1) (applyOnlyRename s t2)
-    applyOnlyRename s (TFunction arg body) = TFunction (applyOnlyRename s arg) (applyOnlyRename s body)
-    applyOnlyRename s (TPointer t) = TPointer $ applyOnlyRename s t
-    applyOnlyRename s t = t
+    applyOnlyRename _ TBool                  = TBool
+    applyOnlyRename _ TInt                   = TInt
+    applyOnlyRename _ TChar                  = TChar
+    applyOnlyRename s (TList l)              = TList $ applyOnlyRename s l
+    applyOnlyRename s (TTuple t1 t2)         = TTuple (applyOnlyRename s t1) (applyOnlyRename s t2)
+    applyOnlyRename s (TFunction arg body)   = TFunction (applyOnlyRename s arg) (applyOnlyRename s body)
+    applyOnlyRename s (TPointer t)           = TPointer $ applyOnlyRename s t
+    applyOnlyRename _ TVoid                  = TVoid
+    applyOnlyRename _ TType                  = TType
+    applyOnlyRename s (TClass t)             = TClass $ applyOnlyRename s t
+    applyOnlyRename _ t@(TClassIdentifier _) = t
 
 instance Types Scheme where
     freeTypeVars (Scheme vars t) = (freeTypeVars t) `Set.difference` (Set.fromList vars)
@@ -139,9 +151,9 @@ nullSubstitution = Map.empty
 
 -- |Compose two substitutions: substitute the types in s2 using the s1 substitution, and merge the resulting
 -- substitution back with s1
+-- apply (s1 `composeSubstitution` s2) == apply s1 . apply s2
 composeSubstitution :: Substitution -> Substitution -> Substitution
-composeSubstitution s1 s2 = Map.map (apply s2) s1 `Map.union` s2
---composeSubstitution s1 s2 = Map.map (apply s1) s2 `Map.union` s1
+composeSubstitution s1 s2 = Map.map (apply s1) s2 `Map.union` s1
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -344,9 +356,9 @@ mgu m t1 t2 = do
     t <- substitute t1'
     s2 <- metaMGU m t
 
-    let sCombined = s1 `composeSubstitution` s2
+    let sCombined = s2 `composeSubstitution` s1
     st <- get
-    let sNew = tInfSubstitution st `composeSubstitution` sCombined
+    let sNew = sCombined `composeSubstitution` tInfSubstitution st
     put st {tInfSubstitution = sNew}
     return sCombined
     where
@@ -360,13 +372,12 @@ mgu m t1 t2 = do
     mgu' p (TTuple t1 t2) (TTuple t1' t2') = do
         s1 <- mgu' p t1 t1'
         s2 <- mgu' p (apply s1 t2) (apply s1 t2')
-        return $ s1 `composeSubstitution` s2
+        return $ s2 `composeSubstitution` s1
     mgu' p (TFunction [] body) (TFunction [] body') = mgu' p body body'
     mgu' p (TFunction (arg:args) body) (TFunction (arg':args') body') = do
         s1 <- mgu' p arg arg'
         s2 <- mgu' p (apply s1 (TFunction args body)) (apply s1 (TFunction args' body'))
-        --return $ s2 `composeSubstitution` s1
-        return $ s1 `composeSubstitution` s2
+        return $ s2 `composeSubstitution` s1
     mgu' p (TPointer t) (TPointer t') = mgu' p t t'
     mgu' p TVoid TVoid                = return nullSubstitution
     mgu' p TType TType                = return nullSubstitution
@@ -431,9 +442,8 @@ tInfConst t (AST.ConstEmptyList, m) = do
     void $ mgu m t (TList tVar)
 
 
-tInfExprTyped :: AST.Expression -> TInf Type
-tInfExprTyped e = do
-    t <- newTypeVar "t"
+tInfExprTyped :: Type -> AST.Expression -> TInf Type
+tInfExprTyped t e = do
     tInfExpr t e
     substitute t
 
@@ -473,8 +483,7 @@ tInfExpr t (AST.ExprNew i, m) = do
     void $ mgu m t (TPointer $ TClass $ TClassIdentifier $ classIDName i)
 tInfExpr t (AST.ExprDelete e, m) = do
     t' <- newTypeVar "class"
-    --tInfExpr (TPointer $ TClass t') e
-    tInfExpr (TPointer t') e
+    tInfExpr (TPointer $ TClass t') e
     void $ mgu m t TVoid
 tInfExpr t (AST.ExprClassMember e@(_, m') i, m) = do
     metaMGU m t
@@ -1048,9 +1057,7 @@ tInfStatement t (AST.StmtReturn expr, m) = do
 tInfStatement t (AST.StmtReturnVoid, m) = return ((AST.StmtReturnVoid, m), "", True)
 tInfStatement t (AST.StmtDelete expr, m) = do
     t' <- newTypeVar "class"
-    --tInfExpr (TPointer $ TClass t') expr -- doesn't work
-    tInfExpr (TPointer t') expr -- works
-    --tInfExpr t' expr -- works
+    tInfExpr (TPointer $ TClass t') expr
     mgu m t TVoid
     return ((AST.StmtDelete expr, m), "", False)
 
