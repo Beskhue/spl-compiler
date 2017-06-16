@@ -691,7 +691,7 @@ genExpression (AST.ExprDelete e@(_, m), _) = do
             -- Adjust stack pointer to point back to the address we added
             push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber 1) Nothing
             genFunCall "free" 1
-        Just t -> throwError $ "delete operator does not know type of obj: " ++ AST.prettyPrint (Checker.translateType m t)
+        Just t -> throwError $ show e ++ "delete operator does not know type of obj: " ++ AST.prettyPrint (Checker.translateType m t)
 genExpression (AST.ExprClassMember e@(_, m) i, m') =
     case AST.metaType m of
         Just (TClass (TClassIdentifier clss)) -> do
