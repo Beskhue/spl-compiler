@@ -850,23 +850,25 @@ tInfVarDecl t decl =
         (AST.VarDeclUntyped identifier expr, m) -> tInfVarDecl' m t identifier expr
         (AST.VarDeclTypedUnitialized annotatedType identifier, m) -> do
             let annotatedT = rTranslateType annotatedType
-            (ast, str) <- tInfVarDeclUntyped' m t identifier
+            (ast, str) <- tInfVarDeclUninitialized' m t identifier
             t' <- substitute t
             s' <- mgu m annotatedT t' `catchError` (\_ ->
                 throwError $ TInfError (TInfErrorExpectedTypeUnify annotatedT t') (AST.metaPos m))
             if apply s' annotatedT == applyOnlyRename s' annotatedT
                 then return (rewrite s' ast, str)
                 else throwError $ TInfError (TInfErrorExpectedTypeTooGeneral annotatedT t') (AST.metaPos m)
-        (AST.VarDeclUntypedUnitialized identifier, m) -> tInfVarDeclUntyped' m t identifier
+        (AST.VarDeclUntypedUnitialized identifier, m) -> tInfVarDeclUninitialized' m t identifier
     where
         tInfVarDecl' :: AST.Meta -> Type -> AST.Identifier -> AST.Expression -> TInf (AST.VarDecl, String)
         tInfVarDecl' m t identifier expr = do
+            metaMGU m t
             tInfExpr t expr
             t' <- substitute t
             let t'' = translateType m t'
             return ((AST.VarDeclTyped t'' identifier expr, m), idName identifier)
-        tInfVarDeclUntyped' :: AST.Meta-> Type -> AST.Identifier -> TInf (AST.VarDecl, String)
-        tInfVarDeclUntyped' m t identifier = do
+        tInfVarDeclUninitialized' :: AST.Meta-> Type -> AST.Identifier -> TInf (AST.VarDecl, String)
+        tInfVarDeclUninitialized' m t identifier = do
+            metaMGU m t
             let t' = translateType m t
             return ((AST.VarDeclTypedUnitialized t' identifier, m), idName identifier)
 
