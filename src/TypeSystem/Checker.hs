@@ -1012,6 +1012,7 @@ tInfManyStatements (t:ts) (stmt:stmts) = do
 
 tInfStatement :: Type -> AST.Statement -> TInf (AST.Statement, String, Bool)
 tInfStatement t (AST.StmtVarDecl decl, m) = do
+    metaMGU m t
     (decl', varName) <- tInfVarDecl t decl
     ctx <- ask
     case Stack.stackPeek ctx of
