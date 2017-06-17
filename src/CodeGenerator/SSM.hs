@@ -694,17 +694,20 @@ genExpression (AST.ExprBinaryOp op e1@(_, m1) e2@(_, m2), _) = do
 genExpression (AST.ExprClassConstructor i es, m) = do
     let Just t@(TClass (TClassIdentifier s)) = AST.metaType m
     size <- sizeOf t
+    -- Calculate the total size of the expressions that will be placed on the stack
+    let argTypes = map (\(_, m) -> let Just t = AST.metaType m in t) es
+    argSize <- liftM sum $ mapM sizeOf argTypes
     -- Make room for the object by incrementing the stack pointer
     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber size) Nothing
     -- Evaluate exrpessions
     mapM genCopyOfExpression es
     -- Create pointer to the space we just created in the stack
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RStackPointer) Nothing
-    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ - (size + 1)) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ - (size + argSize)) Nothing
     push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
-    -- use copy constructor
-    genFunCall (s ++ "-__init__") (1 + length es)
-    -- ignore the return value of the copy function, and jump to the start of the object space
+    -- use constructor
+    genFunCall (s ++ "-__init__") (1 + argSize)
+    -- ignore the return value of the constructor, and jump to the start of the object space
     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ - (1 + size)) Nothing
 genExpression (AST.ExprNew (AST.ExprClassConstructor i es, _), _) = do
     Just (size, _) <- getClass i
@@ -715,13 +718,15 @@ genExpression (AST.ExprNew (AST.ExprClassConstructor i es, _), _) = do
     -- Value of the return register is on the stack (address of object), store the type
     -- frame at the address
     push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
-    -- Load return register (address of object) twice, once for the fun call to init, and once as
-    -- the return value of the new operator
+    -- Load return register (address of object)
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
     mapM genCopyOfExpression (reverse es)
-    -- TODO: this will go wrong if genCopyOfExpression uses the return register
-    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
-    genFunCall (Checker.classIDName i ++ "-__init__") (1 + length es)
+    -- Calculate the total size of the expressions just placed on the stack
+    let argTypes = map (\(_, m) -> let Just t = AST.metaType m in t) es
+    size <- liftM sum $ mapM sizeOf argTypes
+    -- Load the address of the object (the value before all the expression values)
+    push $ SSMLine Nothing (Just $ ILoad $ LStack $ ANumber $ -size) Nothing
+    genFunCall (Checker.classIDName i ++ "-__init__") (1 + size)
     -- Ignore return value of init fun call
     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
 genExpression (AST.ExprNew e@(_, m), _) = do
