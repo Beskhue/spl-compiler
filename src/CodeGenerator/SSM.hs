@@ -500,7 +500,6 @@ genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e@(_, m), _), _) = do
     -- Go to end of the stack space to be copied
     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ size - 1) Nothing
     mapM (\offset' -> push (SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + offset')) (Just $ "store member " ++ show offset'))) (reverse [1..size])
-    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber 1) Nothing
     -- push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + 1)) (Just $ "declare local " ++ Checker.idName i)
     case Stack.stackPop scopes of
         Just (scopes', scope) -> do
@@ -698,17 +697,19 @@ genExpression (AST.ExprClassConstructor i es, m) = do
     -- Calculate the total size of the expressions that will be placed on the stack
     let argTypes = map (\(_, m) -> let Just t = AST.metaType m in t) es
     argSize <- liftM sum $ mapM sizeOf argTypes
+    -- Load the type frame of the object
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel $ Checker.classIDName i) Nothing
     -- Make room for the object by incrementing the stack pointer
-    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber size) Nothing
-    -- Evaluate exrpessions
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ size - 1) Nothing
+    -- Evaluate expressions
     mapM genCopyOfExpression es
     -- Create pointer to the space we just created in the stack
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RStackPointer) Nothing
-    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ - (size + argSize)) Nothing
+    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ - (size + argSize - 1)) Nothing
     push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
     -- use constructor
     genFunCallIgnore (s ++ "-__init__") (1 + argSize)
-    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -size) Nothing
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -(size - 1)) Nothing
 genExpression (AST.ExprNew (AST.ExprClassConstructor i es, _), _) = do
     Just (size, _) <- getClass i
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel $ Checker.classIDName i) Nothing
@@ -795,15 +796,15 @@ genCopyOfExpression e@(_, m) = case AST.metaType m of
         -- the space just created on the stack
         push $ SSMLine Nothing (Just $ ILoad $ LStack $ ANumber 0) Nothing
         push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber 0) Nothing
-        push $ SSMLine Nothing (Just $ IStore $ SStack $ ANumber $ -(size + 2)) Nothing
+        push $ SSMLine Nothing (Just $ IStore $ SStack $ ANumber $ -(size + 1)) Nothing
         -- Create pointer to the space we just created in the stack
         push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RStackPointer) Nothing
-        push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ - (size + 1)) Nothing
+        push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ - (size + 0)) Nothing
         push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
         -- use copy constructor
         genFunCallIgnore (s ++ "-__copy__") 2
         -- jump to the start of the object space
-        push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -size) Nothing
+        push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -(size-1)) Nothing
     Just t@(TClass _) -> do
         -- Type of class is not known statically, so use the object's type frame
         -- First get the address of the object
