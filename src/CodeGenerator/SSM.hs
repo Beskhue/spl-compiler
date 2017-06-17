@@ -481,7 +481,7 @@ genStatements topScopeObjects [] =
     void $ mapM (\i@(_, m) -> do
         genAddressOfExpression (AST.ExprIdentifier i, m)
         let Just (TClass (TClassIdentifier s)) = AST.metaType m
-        genFunCall (s ++ "-__destruct__") 1) topScopeObjects
+        genFunCallIgnore (s ++ "-__destruct__") 1) topScopeObjects
 genStatements topScopeObjects (stmt:stmts) = do
     scopes <- genStatement stmt
     case scopes of
@@ -497,9 +497,10 @@ genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e@(_, m), _), _) = do
     genCopyOfExpression e
     offset <- getLocalAddressOffset
     scopes <- ask
-    --
+    -- Go to end of the stack space to be copied
     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ size - 1) Nothing
     mapM (\offset' -> push (SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + offset')) (Just $ "store member " ++ show offset'))) (reverse [1..size])
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber 1) Nothing
     -- push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + 1)) (Just $ "declare local " ++ Checker.idName i)
     case Stack.stackPop scopes of
         Just (scopes', scope) -> do
@@ -601,15 +602,15 @@ genExpression (AST.ExprFunCall expr@(e,m) args, _) = do
     case e of
         AST.ExprIdentifier (AST.Identifier "print", _) -> do
                     case AST.metaType m of Just (Type.TFunction [t] _) -> genPrint t
-                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -stackSize) Nothing -- Load boolean True onto stack
+                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
         AST.ExprIdentifier (AST.Identifier "println", _) -> do
                     case AST.metaType m of Just (Type.TFunction [t] _) -> genPrint t
                     genPrintChar '\n'
-                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -stackSize) Nothing -- Load boolean True onto stack
+                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing -- Load boolean True onto stack
         AST.ExprIdentifier (AST.Identifier "isEmpty", _) -> do
                     -- Get next address of the list, if it is -1 the list is empty
                     push $ SSMLine Nothing (Just $ ILoad $ LHeap $ ANumber 0) (Just "start isEmpty")
-                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -stackSize) Nothing
+                    push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
                     push $ SSMLine Nothing (Just $ ICompute OEq) (Just "end isEmpty")
         _ -> do
             genExpression expr
@@ -670,7 +671,7 @@ genExpression (AST.ExprFunCall expr@(e,m) args, _) = do
             -- Clean up
             push $ SSMLine (Just lblCleanUp) (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
             genPrintChar ']'
-        genPrint (Type.TPointer _) = genFunCall "printHex" 1
+        genPrint (Type.TPointer _) = genFunCallIgnore "printHex" 1
         genPrint (Type.TVar _) = return ()
 
 genExpression (AST.ExprConstant c, _) = genConstant c
@@ -706,9 +707,8 @@ genExpression (AST.ExprClassConstructor i es, m) = do
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ - (size + argSize)) Nothing
     push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
     -- use constructor
-    genFunCall (s ++ "-__init__") (1 + argSize)
-    -- ignore the return value of the constructor, and jump to the start of the object space
-    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ - (1 + size)) Nothing
+    genFunCallIgnore (s ++ "-__init__") (1 + argSize)
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -size) Nothing
 genExpression (AST.ExprNew (AST.ExprClassConstructor i es, _), _) = do
     Just (size, _) <- getClass i
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel $ Checker.classIDName i) Nothing
@@ -726,9 +726,7 @@ genExpression (AST.ExprNew (AST.ExprClassConstructor i es, _), _) = do
     size <- liftM sum $ mapM sizeOf argTypes
     -- Load the address of the object (the value before all the expression values)
     push $ SSMLine Nothing (Just $ ILoad $ LStack $ ANumber $ -size) Nothing
-    genFunCall (Checker.classIDName i ++ "-__init__") (1 + size)
-    -- Ignore return value of init fun call
-    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
+    genFunCallIgnore (Checker.classIDName i ++ "-__init__") (1 + size)
 genExpression (AST.ExprNew e@(_, m), _) = do
     let Just t = AST.metaType m
     size <- sizeOf t
@@ -744,9 +742,9 @@ genExpression (AST.ExprDelete e@(_, m), _) = do
     case AST.metaType m of
         Just (TPointer (TClass (TClassIdentifier s))) -> do
             genExpression e
-            genFunCall (s ++ "-__destruct__") 1
-            -- Adjust stack pointer to point back to the address we added
-            push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
+            -- Copy the address
+            push $ SSMLine Nothing (Just $ ILoad $ LStack $ ANumber $ 0) Nothing
+            genFunCallIgnore (s ++ "-__destruct__") 1
             genFunCall "free" 1
         Just (TPointer (TClass _)) -> do
             -- Type of class is not known statically, so use the object's type frame
@@ -790,7 +788,7 @@ genCopyOfExpression e@(_, m) = case AST.metaType m of
     Just t@(TClass (TClassIdentifier s)) -> do --todo do not do this special case if the class is being *initialized*
         size <- sizeOf t
         -- Make room for the object by incrementing the stack pointer
-        push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber size) Nothing
+        push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ size) Nothing
         -- Create pointer to expression we want to copy
         genAddressOfExpression e
         -- Duplicate pointer and load the value pointed to, to the first place of
@@ -803,9 +801,9 @@ genCopyOfExpression e@(_, m) = case AST.metaType m of
         push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ - (size + 1)) Nothing
         push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
         -- use copy constructor
-        genFunCall (s ++ "-__copy__") 2
-        -- ignore the return value of the copy function, and jump to the start of the object space
-        push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ - (1 + size)) Nothing
+        genFunCallIgnore (s ++ "-__copy__") 2
+        -- jump to the start of the object space
+        push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -size) Nothing
     Just t@(TClass _) -> do
         -- Type of class is not known statically, so use the object's type frame
         -- First get the address of the object
@@ -942,12 +940,16 @@ genPrintChar c = do
 endPCToStartStackOffset :: Int
 endPCToStartStackOffset = 18
 
-genFunCall :: String -> Int -> Gen ()
-genFunCall str frameSize = do
+genFunCallIgnore :: String -> Int -> Gen ()
+genFunCallIgnore str frameSize = do
     -- Call function
     push $ SSMLine Nothing (Just $ IControl $ CBranchSubroutine $ ALabel str) Nothing
     -- Clean up stack
     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ - frameSize) Nothing
+
+genFunCall :: String -> Int -> Gen ()
+genFunCall str frameSize = do
+    genFunCallIgnore str frameSize
     -- Load returned value
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
 
@@ -1031,13 +1033,13 @@ genMallocInit = do
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocNumBlocks) Nothing
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber mAllocSmallestBlockSize) Nothing
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RHeapPointer) Nothing
-    genFunCall "__malloc_init" 3
+    genFunCallIgnore "__malloc_init" 3
 
 genMalloc :: Gen ()
 genMalloc = do
     push $ SSMLine (Just "malloc") (Just $ IControl $ CLink $ ANumber 0) Nothing
     push $ SSMLine Nothing (Just $ ILoad $ LMark $ ANumber $ -2) Nothing
-    genFunCall "__malloc" 1 -- return register value set by __malloc will be used
+    genFunCallIgnore "__malloc" 1 -- return register value set by __malloc will be used
     push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
     push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
 
