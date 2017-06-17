@@ -717,11 +717,13 @@ genExpression (AST.ExprNew (AST.ExprClassConstructor i es, _), _) = do
     push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
     -- Load return register (address of object) twice, once for the fun call to init, and once as
     -- the return value of the new operator
+    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
     mapM genCopyOfExpression (reverse es)
+    -- TODO: this will go wrong if genCopyOfExpression uses the return register
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
     genFunCall (Checker.classIDName i ++ "-__init__") (1 + length es)
     -- Ignore return value of init fun call
-    push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RReturnRegister) Nothing
+    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
 genExpression (AST.ExprNew e@(_, m), _) = do
     let Just t = AST.metaType m
     size <- sizeOf t
