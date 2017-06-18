@@ -66,6 +66,7 @@ valueType :: AST.Expression -> ValueType
 valueType (AST.ExprIdentifier _, _) = PersistentValue
 valueType (AST.ExprField e _, _) = valueType e
 valueType (AST.ExprUnaryOp (AST.UnaryOpDereference, _) e, _) = valueType e
+valueType (AST.ExprUnaryOp (AST.UnaryOpCast _, _) e, _) = valueType e
 valueType (AST.ExprClassMember e _, _) = valueType e
 valueType _ = TemporaryValue
 
