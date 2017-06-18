@@ -1059,7 +1059,7 @@ genMalloc = do
 --------------------------------------------------------------------------------
 
 optimize :: SSM -> SSM
-optimize = removeNops [] . removeEmptyAjs . mergeAjs []
+optimize = removeNops [] . noAjsToNop . mergeAjs []
     where
         removeNops :: SSM -> SSM -> SSM
         removeNops accum [] = accum
@@ -1079,14 +1079,12 @@ optimize = removeNops [] . removeEmptyAjs . mergeAjs []
             SSMLine Nothing (Just (IControl (CAdjustSP (ANumber n2)))) c2 :
             ssms) = mergeAjs (accum ++ [SSMLine lbl1 (Just $ IControl (CAdjustSP (ANumber $ n1 + n2))) c1]) ssms
         mergeAjs accum (ssm:ssms) = mergeAjs (accum ++ [ssm]) ssms
-        removeEmptyAjs :: SSM -> SSM
-        removeEmptyAjs [] = []
-        removeEmptyAjs (
+        noAjsToNop :: SSM -> SSM
+        noAjsToNop [] = []
+        noAjsToNop (
             SSMLine lbl (Just (IControl (CAdjustSP (ANumber 0)))) c :
-            ssms) = case lbl of
-                Nothing -> removeEmptyAjs ssms
-                _ -> SSMLine lbl (Just (IControl CNop)) c : removeEmptyAjs ssms
-        removeEmptyAjs (ssm:ssms) = ssm : removeEmptyAjs ssms
+            ssms) = SSMLine lbl (Just (IControl CNop)) c : noAjsToNop ssms
+        noAjsToNop (ssm:ssms) = ssm : noAjsToNop ssms
 
 class SSMPost a where
     renameLabel :: String -> String -> a -> a
