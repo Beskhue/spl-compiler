@@ -727,6 +727,7 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
     --let (_, meta) = head decls'
     --let p = AST.metaPos meta
     --when (Pos.sourceName p == "example-programs/test_smart.spl") (
+    --    throwError $ TInfError (TInfErrorGeneric $ show dClassMap) Pos.emptyPos)
     --    throwError $ TInfError (TInfErrorGeneric $ show includedCtx) Pos.emptyPos)
     --    throwError $ TInfError (TInfErrorGeneric $ show sccDecls) (Pos.emptyPos))
 
@@ -738,12 +739,12 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
     spl <- local (const initCtx) (tInfSCCs decls sccDecls)
     s <- substitution
     st <- get
-    -- Rewrite types in the meta
-    spl' <- mapMeta (\m -> return $ m {AST.metaType = apply s (AST.metaType m)}) (includes ++ spl)
     -- Rewrite class member declarations (currently in global scope) back into
     -- the class declarations.
-    spl'' <- rewriteClassDecls spl'
-    removeGlobalScopeClassDecls spl''
+    spl' <- rewriteClassDecls spl
+    spl'' <- removeGlobalScopeClassDecls spl'
+    -- Rewrite types in the meta
+    mapMeta (\m -> return $ m {AST.metaType = apply s (AST.metaType m)}) (includes ++ spl'')
     where
         numberAscending :: [[AST.Decl]] -> [[(Int, AST.Decl)]]
         numberAscending = numberAscending' 0
@@ -837,7 +838,8 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
             rewriteClassDecls' declMap (d@(AST.DeclC (AST.ClassDecl i vs fs, m'), m):ds) = do
                 vs' <- rewriteClassVarDecls' declMap i vs
                 fs' <- rewriteClassFunDecls' declMap i fs
-                return ((AST.DeclC (AST.ClassDecl i vs' fs', m'), m) : ds)
+                ds' <- rewriteClassDecls' declMap ds
+                return ((AST.DeclC (AST.ClassDecl i vs' fs', m'), m) : ds')
                 where
                     rewriteClassVarDecls' :: Map.Map AST.Identifier AST.Decl -> AST.ClassIdentifier -> [AST.VarDecl] -> TInf [AST.VarDecl]
                     rewriteClassVarDecls' _ _ [] = return []
@@ -849,7 +851,7 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
                         let d'' = case d' of
                                 (AST.VarDeclTyped t _ e, m''') -> (AST.VarDeclTyped t i' e, m''')
                                 (AST.VarDeclTypedUnitialized t _, m''') -> (AST.VarDeclTypedUnitialized t i', m''')
-                        return (d'' : ds')
+                        return $ d'' : ds'
                     rewriteClassFunDecls' :: Map.Map AST.Identifier AST.Decl -> AST.ClassIdentifier -> [AST.FunDecl] -> TInf [AST.FunDecl]
                     rewriteClassFunDecls' _ _ [] = return []
                     rewriteClassFunDecls' declMap i (d : ds) = do
@@ -1093,6 +1095,10 @@ tInfStatement t (AST.StmtBlock stmts, m) = do
 tInfStatement t (AST.StmtAssignment expr1 expr2, m) = do
     tInfExpr t expr1
     tInfExpr t expr2
+    t' <- substitute t
+    --case expr1 of
+    --    (AST.ExprClassMember _ (AST.Identifier "p", _), m) -> throwError $ (TInfError (TInfErrorGeneric $ "asdddd" ++ show t' ++ show expr2) (AST.metaPos m))
+    --    _ -> return ()
     return ((AST.StmtAssignment expr1 expr2, m), "", False)
 tInfStatement t (AST.StmtFunCall identifier expressions, m) = do
     tInfExpr t (AST.ExprFunCall identifier expressions, m)
