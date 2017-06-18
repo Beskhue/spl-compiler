@@ -20,6 +20,8 @@ module TypeSystem.Checker where
 
 import qualified Debug.Trace as Trace
 
+import qualified Data.Char as Char
+
 import qualified Data.Map as Map
 import qualified Data.Set as Set
 import qualified Data.Stack as Stack
@@ -339,6 +341,17 @@ getDeclClass i = do
     m <- declClassMap
     return $ Map.lookup i m
 
+getClassDecls :: AST.ClassIdentifier -> TInf [AST.Identifier]
+getClassDecls classIdentifier = do
+    m <- declClassMap
+    return [i | (i, (classIdentifier', _)) <- Map.toList m, classIdentifier == classIdentifier']
+    {-
+    return $ concatMap (\(i, (classIdentifier', _)) ->
+            if classIdentifier == classIdentifier'
+                then [i]
+                else []) (Map.toList m)
+    -}
+
 ------------------------------------------------------------------------------------------------------------------------
 
 -- |Bind a type variable to a type, but don't bind to itself, and make sure the free type variable occurs
@@ -506,12 +519,6 @@ tInfExpr t (AST.ExprDelete e, m) = do
     void $ mgu m t TVoid
 tInfExpr t (AST.ExprClassMember e@(_, m') i, m) = do
     metaMGU m t
-
-    --tVar <- newTypeVar "class"
-    --let t' = TClass tVar
-    --tInfExpr t' e
-    --t'' <- substitute t'
-
     t' <- newTypeVar "class"
     tInfExpr t' e
     t'' <- substitute t'
@@ -519,7 +526,7 @@ tInfExpr t (AST.ExprClassMember e@(_, m') i, m) = do
         TClass (TClassIdentifier clss) -> do
             let newIdentifier = (AST.Identifier $ clss ++ "." ++ idName i, AST.emptyMeta)
             tInfId t newIdentifier
-        _ -> throwError $ TInfError (TInfErrorGeneric $ show t'') (AST.metaPos m')--throwError $ TInfError TInfErrorCannotInferClass (AST.metaPos m')
+        _ -> throwError $ TInfError (TInfErrorGeneric "unable to access member; could not infer class. Consider making the expected object class explicit.") (AST.metaPos m')
 
 tTraverseFields :: (Maybe AST.Meta) -> Type -> Type -> [AST.Field] -> TInf ()
 tTraverseFields (Just m) t t' [] = void $ mgu (m {AST.metaType = Nothing}) t t'
@@ -695,27 +702,38 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
     decls' <- mapMeta metaAssignFreshTypeVar decls'
     -- Split include declarations and regular declarations
     let (decls'', includes) = splitDeclsIncludes decls'
+    -- Add class declarations to the globals
     decls <- addClassDeclsToGlobals decls''
-    -- Get all class declarations
-    m <- declClassMap
-    let classDecls = map idName (Map.keys m) ++ map declIdentifierString (filter (\d -> case d of
-            (AST.DeclC _, _) -> True
-            _ -> False) decls)
-    -- Determine the strongly connected components (everything depends on all class members)
-    ctx <- ask
-    let deps = tInfSPLGraph decls classDecls
-    let (graph, vertexToEdge, keyToVertex) = Graph.graphFromEdges deps
-    let (sccTopo, _) = Graph.SCC.scc graph -- Calculate strongly connected components
+    -- Determine the variable and method dependencies
+    let deps = tInfSPLGraph decls
+    -- Expand class dependencies
+    dClassMap <- liftM Map.toList declClassMap
+    let classes = map (classIDName . fst . snd) dClassMap
+    let deps' = map (\(d, s, ds) ->
+            (d, s, concatMap (\dep ->
+                    if dep `elem` classes
+                        then dep : [idName dep' | (dep', (classIdentifier, _)) <- dClassMap, classIDName classIdentifier == dep]
+                        else [dep]) ds)) deps
+    let (graph, vertexToEdge, keyToVertex) = Graph.graphFromEdges deps'
+    -- Determine the strongly connected components
+    let (sccTopo, _) = Graph.SCC.scc graph
     let scc = reverse sccTopo -- Strongly connected components in reverse topological order ([(sccId, [keys])])
     -- Calculate list of strongly connected declarations and, if declration order is to be preserved, the original location of the declarations
     -- [[(originalIndex, decl)]]
     let sccDecls = if preserveDeclOrder
-        then map (map (\vertex -> (\d@(decl, _, _) -> (case elemIndex d deps of Just idx -> idx, decl)) $ vertexToEdge vertex) . snd) scc
+        then map (map (\vertex -> (\d@(decl, _, _) -> (case elemIndex d deps' of Just idx -> idx, decl)) $ vertexToEdge vertex) . snd) scc
         else numberAscending $ map (map (\vertex -> let d@(decl, _, _) = vertexToEdge vertex in decl) . snd) scc
+
+    --let (_, meta) = head decls'
+    --let p = AST.metaPos meta
+    --when (Pos.sourceName p == "example-programs/test_smart.spl") (
+    --    throwError $ TInfError (TInfErrorGeneric $ show includedCtx) Pos.emptyPos)
+    --    throwError $ TInfError (TInfErrorGeneric $ show sccDecls) (Pos.emptyPos))
 
     let (TypeCtx includedCtx') = includedCtx
     let (TypeCtx builtInCtx') = builtInCtx
     -- Create top scope
+    ctx <- ask
     let initCtx = Stack.stackPush ctx (TypeCtx $ Map.union builtInCtx' includedCtx')
     spl <- local (const initCtx) (tInfSCCs decls sccDecls)
     s <- substitution
@@ -750,10 +768,18 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
         addGlobalToCtx ctx decl t =
             case decl of
                 (AST.DeclC (AST.ClassDecl i _ _, _), _) -> return $ add ctx (classIDName i) (Scheme [] t)
-                (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> return $ add ctx (idName i) (Scheme [] t)
-                (AST.DeclV (AST.VarDeclUntyped i _, _), _) -> return $ add ctx (idName i) (Scheme [] t)
-                (AST.DeclV (AST.VarDeclTypedUnitialized _ i, _), _) -> return $ add ctx (idName i) (Scheme [] t)
-                (AST.DeclV (AST.VarDeclUntypedUnitialized i, _), _) -> return $ add ctx (idName i) (Scheme [] t)
+                (AST.DeclV (AST.VarDeclTyped _ i _, _), _) -> if (Char.isUpper . head . idName) i
+                    then return $ add ctx (idName i) (generalize ctx t)
+                    else return $ add ctx (idName i) (Scheme [] t)
+                (AST.DeclV (AST.VarDeclUntyped i _, _), _) -> if (Char.isUpper . head . idName) i
+                    then return $ add ctx (idName i) (generalize ctx t)
+                    else return $ add ctx (idName i) (Scheme [] t)
+                (AST.DeclV (AST.VarDeclTypedUnitialized _ i, _), _) -> if (Char.isUpper . head . idName) i
+                    then return $ add ctx (idName i) (generalize ctx t)
+                    else return $ add ctx (idName i) (Scheme [] t)
+                (AST.DeclV (AST.VarDeclUntypedUnitialized i, _), _) -> if (Char.isUpper . head . idName) i
+                    then return $ add ctx (idName i) (generalize ctx t)
+                    else return $ add ctx (idName i) (Scheme [] t)
                 (AST.DeclF (AST.FunDeclTyped i _ _ _, _), _) -> return $ add ctx (idName i) (generalize ctx t)
                 (AST.DeclF (AST.FunDeclUntyped i _ _, _), _) -> return $ add ctx (idName i) (generalize ctx t)
         insertIntoSPL :: AST.SPL -> Int -> AST.Decl -> AST.SPL
@@ -852,10 +878,10 @@ tInfSPL preserveDeclOrder includedCtx decls' = do
 
 -- |Find the graph of (global) dependencies; a list of tuples of declarations, identifiers of those declarations,
 -- and the (global) identifiers those declarations depend on
-tInfSPLGraph :: AST.SPL -> [String] -> [(AST.Decl, String, [String])]
-tInfSPLGraph decls baseDependencies =
+tInfSPLGraph :: AST.SPL -> [(AST.Decl, String, [String])]
+tInfSPLGraph decls =
     let globalVars = map declIdentifierString decls in
-        map (\decl -> (decl, declIdentifierString decl, (snd $ dependencies globalVars decl) ++ baseDependencies)) decls
+        map (\decl -> (decl, declIdentifierString decl, snd $ dependencies globalVars decl)) decls
 
 tInfDecl :: Type -> AST.Decl -> TInf (AST.Decl, String)
 tInfDecl t (AST.DeclC decl, m) = do
@@ -1119,6 +1145,29 @@ instance Dependencies a => Dependencies [a] where
             let (globalDefs'', deps') = dependencies globalDefs' aa in
                 (globalDefs'', deps ++ deps')
 
+instance Dependencies AST.Type where
+    dependencies globalDefs t = dependencies globalDefs (rTranslateType t)
+
+instance Dependencies Type where
+    dependencies globalDefs (TVar _) = (globalDefs, [])
+    dependencies globalDefs TBool = (globalDefs, [])
+    dependencies globalDefs TInt = (globalDefs, [])
+    dependencies globalDefs TChar = (globalDefs, [])
+    dependencies globalDefs (TList t) = dependencies globalDefs t
+    dependencies globalDefs (TTuple t1 t2 ) =
+        let (_, deps) = dependencies globalDefs t1 in
+            let (_, deps') = dependencies globalDefs t2 in
+                (globalDefs, deps ++ deps')
+    dependencies globalDefs (TFunction ts t) =
+        let (_, deps) = dependencies globalDefs ts in
+            let (_, deps') = dependencies globalDefs t in
+                (globalDefs, deps ++ deps')
+    dependencies globalDefs (TPointer t) = dependencies globalDefs t
+    dependencies globalDefs TVoid = (globalDefs, [])
+    dependencies globalDefs TType = (globalDefs, [])
+    dependencies globalDefs (TClass t) = dependencies globalDefs t
+    dependencies globalDefs (TClassIdentifier s) = (globalDefs, [s])
+
 instance Dependencies AST.Decl where
     dependencies globalDefs (AST.DeclC decl, _) = dependencies globalDefs decl
     dependencies globalDefs (AST.DeclV decl, _) = dependencies globalDefs decl
@@ -1131,29 +1180,26 @@ instance Dependencies AST.ClassDecl where
                 (globalDefs, deps ++ deps')
 
 instance Dependencies AST.VarDecl where
-    dependencies globalDefs (AST.VarDeclTyped _ i e, _) =
-        let (globalDefs', deps) = dependencies globalDefs e in
-          ([g | g <- globalDefs', g /= idName i], deps)
+    dependencies globalDefs (AST.VarDeclTyped t i e, _) =
+        let (_, deps) = dependencies globalDefs t in
+            let (globalDefs', deps') = dependencies globalDefs e in
+              ([g | g <- globalDefs', g /= idName i], deps ++ deps' ++ dependenciesClass (idName i))
     dependencies globalDefs (AST.VarDeclUntyped i e, _) =
         let (globalDefs', deps) = dependencies globalDefs e in
-          ([g | g <- globalDefs, g /= idName i], deps)
-    dependencies globalDefs (AST.VarDeclTypedUnitialized _ i, _) = ([g | g <- globalDefs, g /= idName i], [])
-    dependencies globalDefs (AST.VarDeclUntypedUnitialized i, _) = ([g | g <- globalDefs, g /= idName i], [])
+          ([g | g <- globalDefs, g /= idName i], deps ++ dependenciesClass (idName i))
+    dependencies globalDefs (AST.VarDeclTypedUnitialized t i, _) =
+        let (_, deps) = dependencies globalDefs t in
+            ([g | g <- globalDefs, g /= idName i], deps ++ dependenciesClass (idName i))
+    dependencies globalDefs (AST.VarDeclUntypedUnitialized i, _) = ([g | g <- globalDefs, g /= idName i], dependenciesClass (idName i))
 
 instance Dependencies AST.FunDecl where
     dependencies globalDefs (AST.FunDeclTyped i is t ss, _) =
-        --let (TFunction args _) = rTranslateType t in
-        --let depFinder arg deps = case arg of
-        --        TClass s -> ("!" ++ s) : deps
-        --        _ -> deps
-        --     in
-        --let argDeps = foldr depFinder [] args in
-        let (globalDefs', deps) = dependencies [g | g <- globalDefs, g `notElem` map idName is] ss in
-                --([g | g <- globalDefs', g /= idName i], argDeps ++ deps)
-                ([g | g <- globalDefs', g /= idName i], deps)
+        let (_, deps) = dependencies globalDefs t in
+            let (globalDefs', deps') = dependencies [g | g <- globalDefs, g `notElem` map idName is] ss in
+                    ([g | g <- globalDefs', g /= idName i], deps ++ deps' ++ dependenciesClass (idName i))
     dependencies globalDefs (AST.FunDeclUntyped i is ss, _) =
         let (globalDefs', deps) = dependencies [g | g <- globalDefs, g `notElem` map idName is] ss in
-            ([g | g <- globalDefs', g /= idName i], deps)
+            ([g | g <- globalDefs', g /= idName i], deps ++ dependenciesClass (idName i))
 
 instance Dependencies AST.Statement where
     dependencies globalDefs (AST.StmtVarDecl decl, _) = dependencies globalDefs decl
@@ -1202,22 +1248,26 @@ instance Dependencies AST.Expression where
         let (_, deps) = dependencies globalDefs e1 in
             let (_, deps') = dependencies globalDefs e2 in
                 (globalDefs, deps ++ deps')
-    dependencies globalDefs (AST.ExprClassConstructor i es, _) = dependencies globalDefs es
-    dependencies globalDefs (AST.ExprNew i, _) = dependencies globalDefs i
+    dependencies globalDefs (AST.ExprClassConstructor i es, _) =
+        let (_, deps) = dependencies globalDefs es in
+            (globalDefs, deps ++ [classIDName i])
+    dependencies globalDefs (AST.ExprNew e, _) = dependencies globalDefs e
     dependencies globalDefs (AST.ExprDelete e, _) = dependencies globalDefs e
     dependencies globalDefs (AST.ExprClassMember e i, _) = dependencies globalDefs e
 
 instance Dependencies AST.Identifier where
     dependencies globalDefs (AST.Identifier i, _) =
         if i `elem` globalDefs
-            then (globalDefs, [i])
-            else (globalDefs, [])
+            then (globalDefs, i : dependenciesClass i)
+            else (globalDefs, dependenciesClass i)
 
 instance Dependencies AST.ClassIdentifier where
-    dependencies globalDefs (AST.ClassIdentifier i, _) = (globalDefs, [])
-        --if i `elem` globalDefs
-        --    then (globalDefs, ["!" ++ i])
-        --    else (globalDefs, [])
+    dependencies globalDefs (AST.ClassIdentifier i, _) = (globalDefs, [i])
+
+dependenciesClass :: String -> [String]
+dependenciesClass i = if Char.isUpper (head i)
+        then [takeWhile (/= '.') i]
+        else []
 
 ------------------------------------------------------------------------------------------------------------------------
 
