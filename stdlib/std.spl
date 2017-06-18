@@ -1,5 +1,6 @@
 #include "stdlib/stdmath.spl"
-#include "stdlib/buddyallocator.spl"
+#include "stdlib/stdbuddyallocator.spl"
+#include "stdlib/stdsmartpointers.spl"
 
 printHex(n) :: Int -> Bool
 {

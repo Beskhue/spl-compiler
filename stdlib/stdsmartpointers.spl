@@ -1,0 +1,53 @@
+
+/*
+Count { 
+    var count;
+    
+    __init__(self) :: Count* -> Void {
+        self->count = 0;
+    }
+    
+    __copy__(self, other) :: Count* Count* -> Void {
+        self->count = other->count;
+    }
+    
+    __destruct__(self) :: Count* -> Void {
+    }
+    
+    increment(self) :: Count* -> Void {
+        self->count = self->count + 1;
+    }
+    
+    decrement(self) :: Count* -> Int {
+        self->count = self->count - 1;
+        return self->count;
+    }
+}
+
+SP {
+    Count* count;
+    a* p;
+    
+    __init__(self, p) :: SP* a* -> Void {
+        self->count = new Count();
+        self->p = p;
+    }
+    
+    __copy__(self, other) :: SP* SP* -> Void {
+        self->count = other->count;
+        self->p = other->p;
+    
+        (self->count)->increment();
+    }
+    
+    __destruct__(self) :: SP* -> Void {
+        (self->count)->decrement();
+        if ((self->count)->count == 0) {
+            delete self->p;
+            delete self->count;
+        }
+    }
+}
+*/
+
+var g = 1;
