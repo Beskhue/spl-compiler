@@ -684,7 +684,8 @@ genExpression (AST.ExprFunCall expr@(e,m) args, _) = do
             push $ SSMLine (Just lblCleanUp) (Just $ IControl $ CAdjustSP $ ANumber $ -1) Nothing
             genPrintChar ']'
         genPrint (Type.TPointer _) = genFunCallIgnore "printHex" 1
-        genPrint (Type.TVar _) = return ()
+        genPrint (Type.TClass _) = genFunCallIgnore "printHex" 1
+        genPrint (Type.TVar _) = push $ SSMLine Nothing (Just $ IIO IOPrintInt) Nothing
 
 genExpression (AST.ExprConstant c, _) = genConstant c
 genExpression (AST.ExprTuple e1 e2, _) = do
@@ -1035,7 +1036,7 @@ mAllocSmallestBlockSize :: Int
 mAllocSmallestBlockSize = 8
 mAllocLargestBlockSize :: Int
 --mAllocLargestBlockSize = 1048576 -- 2^20
-mAllocLargestBlockSize = 32
+mAllocLargestBlockSize = 128
 mAllocNumBlocks :: Int
 mAllocNumBlocks = ceiling $ (fromIntegral mAllocLargestBlockSize) / (fromIntegral mAllocSmallestBlockSize)
 
