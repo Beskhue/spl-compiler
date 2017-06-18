@@ -122,6 +122,7 @@ data SSMStore = SStack SSMArgument
               | SHeap
               | SHeapMultiple SSMArgument
               | SMark SSMArgument
+              | SMarkMultiple SSMArgument SSMArgument
               | SAddress SSMArgument
               | SRegister SSMArgument
                 deriving (Show, Eq)
@@ -131,6 +132,7 @@ instance Display SSMStore where
     display SHeap = "sth"
     display (SHeapMultiple arg) = "stmh " ++ display arg
     display (SMark arg) = "stl " ++ display arg
+    display (SMarkMultiple arg1 arg2) = "stml " ++ display arg1 ++ " " ++ display arg2
     display (SAddress arg) = "sta " ++ display arg
     display (SRegister arg) = "str " ++ display arg
 
@@ -499,8 +501,7 @@ genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e@(_, m), _), _) = do
     scopes <- ask
     -- Go to end of the stack space to be copied
     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ size - 1) Nothing
-    mapM (\offset' -> push (SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + offset')) (Just $ "store member " ++ show offset'))) (reverse [1..size])
-    -- push $ SSMLine Nothing (Just $ IStore $ SMark $ ANumber (offset + 1)) (Just $ "declare local " ++ Checker.idName i)
+    push $ SSMLine Nothing (Just $ IStore $ SMarkMultiple (ANumber $ offset + 1) (ANumber size)) Nothing
     case Stack.stackPop scopes of
         Just (scopes', scope) -> do
             let scope' = Map.insert (Checker.idName i) (offset + 1) scope
@@ -551,6 +552,7 @@ genStatement (AST.StmtBlock stmts', _) = do
     local (const $ Stack.stackPush scopes emptyVariableScope) (genScopedStatements stmts')
     return Nothing
 genStatement (AST.StmtAssignment e1 e2, _) = do
+    -- TODO make this work for objects
     genCopyOfExpression e2
     genAddressOfExpression e1
     push $ SSMLine Nothing (Just $ IStore $ SAddress $ ANumber 0) Nothing
@@ -1087,6 +1089,7 @@ instance SSMPost SSMStore where
     renameLabel f t SHeap = SHeap
     renameLabel f t (SHeapMultiple a) = SHeapMultiple $ renameLabel f t a
     renameLabel f t (SMark a) = SMark $ renameLabel f t a
+    renameLabel f t (SMarkMultiple a1 a2) = SMarkMultiple (renameLabel f t a1) (renameLabel f t a2)
     renameLabel f t (SAddress a) = SAddress $ renameLabel f t a
     renameLabel f t (SRegister a) = SRegister $ renameLabel f t a
 
