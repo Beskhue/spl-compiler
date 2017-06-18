@@ -765,9 +765,9 @@ genExpression (AST.ExprDelete e@(_, m), _) = do
             -- First get the address of the object
             genExpression e
             -- Duplicate the address of the object and load the value pointed to (the object's type frame)
-            push $ SSMLine Nothing (Just $ ILoad $ LStack $ ANumber $ -1) Nothing
+            push $ SSMLine Nothing (Just $ ILoad $ LStack $ ANumber $ 0) Nothing
             push $ SSMLine Nothing (Just $ ILoad $ LAddress $ ANumber 0) Nothing
-            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 4) Nothing -- Destructor is at the fourth place
+            push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber 6) Nothing -- Destructor is at the sixth byte
             push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
             -- Jump to the destructor function pointed to
             push $ SSMLine Nothing (Just $ IControl CJumpSubroutine) Nothing
