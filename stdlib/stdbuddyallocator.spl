@@ -77,6 +77,9 @@ __malloc(requestedMemory)
     
     // Turn the requested memory into the smallest fitting power of two
     requestedMemory = toFittingPowerOf2(requestedMemory);
+    if (requestedMemory < sizePerFragment) {
+        requestedMemory = sizePerFragment;
+    }
     
     // Find the index of the block to allocate
     var index = 0;
