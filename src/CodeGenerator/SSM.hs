@@ -704,7 +704,7 @@ genExpression (AST.ExprClassConstructor i es, m) = do
     -- Make room for the object by incrementing the stack pointer
     push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ size - 1) Nothing
     -- Evaluate expressions
-    mapM genCopyOfExpression es
+    mapM genCopyOfExpression (reverse es)
     -- Create pointer to the space we just created in the stack
     push $ SSMLine Nothing (Just $ ILoad $ LRegister $ ARegister RStackPointer) Nothing
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ - (size + argSize - 1)) Nothing
@@ -749,7 +749,7 @@ genExpression (AST.ExprDelete e@(_, m), _) = do
             push $ SSMLine Nothing (Just $ ILoad $ LStack $ ANumber $ 0) Nothing
             genFunCallIgnore (s ++ "-__destruct__") 1
             genFunCall "free" 1
-        Just (TPointer (TClass _)) -> do
+        Just (TPointer _) -> do
             -- Type of class is not known statically, so use the object's type frame
             -- First get the address of the object
             genExpression e
