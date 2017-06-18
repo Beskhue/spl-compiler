@@ -445,15 +445,15 @@ genFunDecl (AST.FunDeclTyped i args _ stmts, m) = do
 
         -- Calculate frame size
         let localsTypes = locals stmts
-        sizes <- mapM sizeOf localsTypes
-        let frameSize = sum sizes
+        localsSizes <- mapM sizeOf localsTypes
+        let frameSize = sum localsSizes
 
         -- Function entry; reserve stack space for locals
         push $ SSMLine (Just $ Checker.idName i) (Just $ IControl $ CLink $ ANumber frameSize) Nothing
 
         -- Calculate new scope
-        sizes <- mapM sizeOf tArgs
-        let cumulativeSizes = scanl1 (+) sizes
+        argsSizes <- mapM sizeOf tArgs
+        let cumulativeSizes = scanl1 (+) argsSizes
         let scope = [(Checker.idName arg, -(1 + offset)) | (arg, offset) <- zip args cumulativeSizes]
 
         -- Add to old scope
@@ -462,8 +462,18 @@ genFunDecl (AST.FunDeclTyped i args _ stmts, m) = do
 
         --local (const (0, scopes')) (liftM id (mapM genStatement stmts))
         local (const scopes') (genScopedStatements stmts)
+
+        -- Destruct passed objects
+        local (const scopes') (mapM (\(arg, tArg) -> case tArg of
+                TClass (TClassIdentifier s) -> do
+                    genAddressOfExpression (AST.ExprIdentifier arg, m)
+                    genFunCallIgnore (s ++ "-__destruct__") 1
+                _ -> return ()) (zip args tArgs))
+
+        -- Destroy function frame
         push $ SSMLine Nothing (Just $ IControl CUnlink) Nothing
         push $ SSMLine Nothing (Just $ IControl CReturn) Nothing
+
 
 genScopedStatements :: [AST.Statement] -> Gen ()
 genScopedStatements stmts = do
@@ -499,8 +509,7 @@ genStatement (AST.StmtVarDecl (AST.VarDeclTyped _ i e@(_, m), _), _) = do
     genCopyOfExpression e
     offset <- getLocalAddressOffset
     scopes <- ask
-    -- Go to end of the stack space to be copied
-    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ size - 1) Nothing
+    -- Store object in local frame
     push $ SSMLine Nothing (Just $ IStore $ SMarkMultiple (ANumber $ offset + 1) (ANumber size)) Nothing
     case Stack.stackPop scopes of
         Just (scopes', scope) -> do
@@ -595,6 +604,8 @@ genExpression (AST.ExprField e f, _) = do
 genExpression (AST.ExprFunCall expr@(e,m) args, _) = do
     -- Evaluate expressions to the stack
     liftM id (mapM genCopyOfExpression (reverse args))
+
+    -- TODO: ensure we are not passing an object to a parameter of polymorphic type
 
     -- Calculate stack size
     let argTypes = map (\(_, m) -> case AST.metaType m of Just t -> t) args
@@ -711,7 +722,6 @@ genExpression (AST.ExprClassConstructor i es, m) = do
     push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
     -- use constructor
     genFunCallIgnore (s ++ "-__init__") (1 + argSize)
-    push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -(size - 1)) Nothing
 genExpression (AST.ExprNew (AST.ExprClassConstructor i es, _), _) = do
     Just (size, _) <- getClass i
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ALabel $ Checker.classIDName i) Nothing
@@ -805,8 +815,6 @@ genCopyOfExpression e@(_, m) = case AST.metaType m of
         push $ SSMLine Nothing (Just $ ICompute OAdd) Nothing
         -- use copy constructor
         genFunCallIgnore (s ++ "-__copy__") 2
-        -- jump to the start of the object space
-        push $ SSMLine Nothing (Just $ IControl $ CAdjustSP $ ANumber $ -(size-1)) Nothing
     Just t@(TClass _) -> do
         -- Type of class is not known statically, so use the object's type frame
         -- First get the address of the object
