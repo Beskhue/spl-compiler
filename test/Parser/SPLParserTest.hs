@@ -18,11 +18,11 @@ spec_SPLParser =
                 (DeclV
                     (VarDeclTyped
                         (TypeInt, Pos "" 1 1)
-                        (Identifier "a", Pos "" 1 1)
+                        (Identifier "a", AST.emptyMeta)
                         (ExprConstant
-                            (ConstInt 5, Pos "" 1 1),
+                            (ConstInt 5, AST.emptyMeta),
                             Pos "" 1 1),
-                        Pos "" 1 1), Pos "" 1 1)
+                        Pos "" 1 1), AST.emptyMeta)
             ]
         it "parses left associativity" $
             prettyPrint (parseDet "Int n3 = ((((1 - 2) + 3) - 4) + 5) - 6;") `shouldBe` "Int n3 = 1 - 2 + 3 - 4 + 5 - 6;"

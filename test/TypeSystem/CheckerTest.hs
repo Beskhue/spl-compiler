@@ -7,8 +7,9 @@ import qualified Lib as Lib
 import qualified Parser.SPLParser as SPLParser
 import qualified Lexer.Lexer as Lexer
 import TypeSystem.Checker as Checker
+import qualified Data.Type as Type
 
-parseAndCheckDet = fst . Checker.checkDet True . SPLParser.parseDet . Lexer.lexDet "test"
+parseAndCheckDet = fst . Checker.checkDet True Checker.emptyCtx . SPLParser.parseDet . Lexer.lexDet "test"
 
 expr = SPLParser.parseDet' SPLParser.pExpression . Lexer.lexDet "test"
 onlyTypeEmptyTInfExpr = Checker.typeInferenceExpr Checker.tInfExprTyped
@@ -17,17 +18,17 @@ spec_Checker :: Spec
 spec_Checker = do
     describe "Checker.tInfExpr" $ do
         it "infers that '1;'  is of type TInt" $
-            onlyTypeEmptyTInfExpr (expr  "1;") `shouldBe` Right Checker.TInt
+            onlyTypeEmptyTInfExpr (expr  "1;") `shouldBe` Right Type.TInt
         it "infers that '1 + 2;' is of type TInt" $
-            onlyTypeEmptyTInfExpr (expr  "1 + 2;") `shouldBe` Right Checker.TInt
+            onlyTypeEmptyTInfExpr (expr  "1 + 2;") `shouldBe` Right Type.TInt
         it "infers that '(1 : []) : [];' is of type [[TInt]]" $
-            onlyTypeEmptyTInfExpr (expr "(1 : []) : [];") `shouldBe` Right (Checker.TList (Checker.TList Checker.TInt))
+            onlyTypeEmptyTInfExpr (expr "(1 : []) : [];") `shouldBe` Right (Type.TList (Type.TList Type.TInt))
         it "infers that 'False : True : [];' is of type [TBool]" $
-            onlyTypeEmptyTInfExpr (expr "True : False : [];") `shouldBe` Right (Checker.TList TBool)
+            onlyTypeEmptyTInfExpr (expr "True : False : [];") `shouldBe` Right (Type.TList Type.TBool)
         it "infers that '[];' is a list of variable type" $
             onlyTypeEmptyTInfExpr (expr "[];") `shouldSatisfy` (\t ->
                 case t of
-                    Right (Checker.TList (Checker.TVar _)) -> True
+                    Right (Type.TList (Type.TVar _)) -> True
                     _ -> False)
         it "produces an error for '1 : 'a' : [];'" $
             onlyTypeEmptyTInfExpr (expr "1 : 'a' : [];") `shouldSatisfy` isLeft

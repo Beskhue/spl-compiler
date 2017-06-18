@@ -58,7 +58,7 @@ spec_Lexer =
             getTokens (Lexer.lexDet "test" "= + * / % == < > <= >= != && || : !") `shouldBe` [
                 TOperator OAssignment, TOperator OPlus, TOperator OMultiply, TOperator ODivide, TOperator OMod,
                 TOperator OEq, TOperator OLT, TOperator OGT, TOperator OLTE, TOperator OGTE, TOperator ONEq,
-                TOperator OAnd, TOperator OOr, TOperator OConcat, TOperator ONeg,
+                TOperator OAnd, TPunctuator PPipe, TPunctuator PPipe, TOperator OConcat, TOperator ONeg,
                 TEOF]
         it "lexes punctuators" $
             getTokens (Lexer.lexDet "test" "; ( ) { } [ ] , -> - ::") `shouldBe` [
