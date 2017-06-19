@@ -1,11 +1,35 @@
-A Simple Programming Lanuage compiler.
+A compiler for the &SPL language.
 
-# Type check example:
+# &SPL
+
+&SPL is an acronym for Simple Programming Language, and is a C-like imperative programming language, with classes, lists, and tuples. For example, the following code produces the Fibonacci sequence.
 
 ```
-a = Lexer.lexDet "test" "1;"
-b = SPLParser.parseDet' SPLParser.pExpression a
-Checker.runTInf (Checker.typeInferenceExpr Checker.emptyMap b)
+#include "stdlib/std.spl"
+// Output the Fibonacci sequence
+main ()
+{
+    var t1 = 0;
+    var t2 = 1;
+    while(True) {
+        println(t2);
+        var h = t1 + t2;
+        t1 = t2;
+        t2 = h;
+    }
+}
+```
 
-> (Right TInt,TInfState {tInfSupply = 0, tInfSubst = fromList []})
+# Compiling
+
+```
+> Lib.compile
+> "program.spl"
+```
+
+# Pretty printing
+
+```
+> Lib.prettyPrint
+> "program.spl"
 ```
