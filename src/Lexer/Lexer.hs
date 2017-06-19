@@ -120,6 +120,7 @@ recognizers = [ -- End of file
                         then TConstant $ CChar $ s !! (length s - 2)
                         else TConstant $ CChar $ escapeChar $ s !! (length s - 2)),
                 constructRecognizer 1 "\\[\\]" (\s -> TConstant CEmptyList),
+                constructShortestRecognizer 1 "\".*\"" (\s -> TConstant $ CString $ (tail . init) s),
                 -- Identifiers
                 constructRecognizer 0 "(\\w|_)(\\w|[_0-9])*" (\s -> if Char.isUpper $ s!!0
                     then TClassIdentifier s

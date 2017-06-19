@@ -313,6 +313,7 @@ instance (ASTEq Expression) where
 data Constant'       = ConstBool Bool
                      | ConstInt Int
                      | ConstChar Char
+                     | ConstString String
                      | ConstEmptyList
                        deriving (Eq, Show)
 type Constant        = (Constant', Meta)
@@ -321,12 +322,14 @@ instance PrettyPrint Constant where
     prettyPrint (ConstBool b, _) = show b
     prettyPrint (ConstInt i, _) = show i
     prettyPrint (ConstChar c, _) = show c
+    prettyPrint (ConstString s, _) = show s
     prettyPrint (ConstEmptyList, _) = "[]"
 
 instance (ASTEq Constant) where
     astEq (ConstBool b1, _) (ConstBool b2, _) = b1 == b2
     astEq (ConstInt i1, _) (ConstInt i2, _) = i1 == i2
     astEq (ConstChar c1, _) (ConstChar c2, _) = c1 == c2
+    astEq (ConstString s1, _) (ConstString s2, _) = s1 == s2
     astEq (ConstEmptyList, _) (ConstEmptyList, _) = True
     astEq _ _ = False
 

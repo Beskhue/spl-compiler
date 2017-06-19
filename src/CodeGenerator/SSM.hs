@@ -892,6 +892,7 @@ genConstant (AST.ConstInt i, _) = push $ SSMLine Nothing (Just $ ILoad $ LConsta
 genConstant (AST.ConstChar c, _) = push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ Char.ord c) Nothing
 genConstant (AST.ConstBool b, _) = let n = if b then -1 else 0 in
     push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ n) Nothing
+genConstant (AST.ConstString s, _) = undefined
 genConstant (AST.ConstEmptyList, _) = do
         push $ SSMLine Nothing (Just $ ILoad $ LConstant $ ANumber $ -1) Nothing
         push $ SSMLine Nothing (Just $ IStore SHeap) Nothing

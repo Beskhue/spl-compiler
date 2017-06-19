@@ -77,6 +77,7 @@ data Type = TypeInt
 data Constant = CBool Bool
               | CInt Int
               | CChar Char
+              | CString String
               | CEmptyList
                 deriving (Show, Eq)
 

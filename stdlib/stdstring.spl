@@ -1,0 +1,35 @@
+/*
+String
+{
+    Char* arr;
+    Int size;
+    
+    __init__(self, arr, size) :: String* Char* Int -> Void
+    {
+        self->arr = arr;
+        self->size = size;
+    }
+    
+    __copy__(self, other) :: String* String* -> Void
+    {
+        self->arr = other->arr;
+        self->size = other->size;
+    }
+    
+    __destruct__(self) :: String* -> Void
+    {
+        free(self->arr);
+    }
+    
+    print(self) :: String* -> Void
+    {
+        var idx = 0;
+        while (idx < self->size) {
+            print((self->arr)[idx]);
+            idx = idx + 1;
+        }
+    }
+}
+*/
+
+var g = 1;

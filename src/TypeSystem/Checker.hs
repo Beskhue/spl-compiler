@@ -451,6 +451,7 @@ tInfConst :: Type -> AST.Constant -> TInf ()
 tInfConst t (AST.ConstBool _, m) = void $ mgu m t TBool
 tInfConst t (AST.ConstInt _, m) = void $ mgu m t TInt
 tInfConst t (AST.ConstChar _, m) = void $ mgu m t TChar
+tInfConst t (AST.ConstString _, m) = void $ mgu m t (TClass $ TClassIdentifier "String")
 tInfConst t (AST.ConstEmptyList, m) = do
     tVar <- newTypeVar "a"
     void $ mgu m t (TList tVar)
@@ -1547,6 +1548,7 @@ instance RewriteAST AST.Constant where
     mapMeta f (AST.ConstBool b, m) = f m >>= \m' -> return (AST.ConstBool b, m')
     mapMeta f (AST.ConstInt n, m) = f m >>= \m' -> return (AST.ConstInt n, m')
     mapMeta f (AST.ConstChar c, m) = f m >>= \m' -> return (AST.ConstChar c, m')
+    mapMeta f (AST.ConstString s, m) = f m >>= \m' -> return (AST.ConstString s, m')
     mapMeta f (AST.ConstEmptyList, m) = f m >>= \m' -> return (AST.ConstEmptyList, m')
 
 instance RewriteAST AST.UnaryOperator where

@@ -458,6 +458,7 @@ pConstant = tokenPrim show advance
             TP (TConstant (CBool b)) p -> Just (AST.ConstBool b, AST.metaFromPos p)
             TP (TConstant (CInt i)) p -> Just (AST.ConstInt i, AST.metaFromPos p)
             TP (TConstant (CChar c)) p -> Just (AST.ConstChar c, AST.metaFromPos p)
+            TP (TConstant (CString s)) p -> Just (AST.ConstString s, AST.metaFromPos p)
             TP (TConstant CEmptyList) p -> Just (AST.ConstEmptyList, AST.metaFromPos p)
             _ -> Nothing
     ) <?> "a constant"
