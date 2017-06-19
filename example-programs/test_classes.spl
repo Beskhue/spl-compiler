@@ -1,0 +1,92 @@
+#include "stdlib/std.spl"
+
+var g = 0;
+
+Test
+{
+    var a;
+    var b;
+    var c;
+
+    __init__(self, c) :: Test* a -> Void {
+        g = g + 1;
+        self->c = c;
+        self->a = g;
+        self->b = '6';
+    }
+    
+    __copy__(self, other) :: Test* Test* -> Void {
+        println('c');
+        println(self);
+        self->a = other->a;
+        self->b = other->b;
+        self->c = other->c;
+    }
+    
+    __destruct__(self) :: Test* -> Void {
+        println('d');
+    }
+    
+    print(self) :: Test* -> Void {
+        println(self->a);
+    }
+    
+}
+
+main() {
+    var test = new Test(1);
+    var test2 = new Test(5);
+    println(test);
+    println(test2);
+    println(&(test->a));
+    println(&(test2->a));
+    println(&(test->b));
+    println(&(test2->b));
+    println('-');
+    println(test->a);
+    println(test2->a);
+    println('-');
+    println(test->c);
+    println(test2->c);
+    println('-');
+    test->print();
+    test2->print();
+    println('-');
+    var test3 = *test;
+    var test4 = test3;
+    
+    var testa = test4;
+    var testb = testa;
+    var testc = testb;
+    var testd = testc;
+    var teste = testd;
+    
+    println('>');
+    println(teste.c);
+    
+    println('-');
+    test3.a = 42;
+    println(test3.a);
+    println(test3.b);
+    println(test->a);
+    println('-');
+    
+    println((Int*) *test);
+    println((Int*) *test2);
+    println((Int*) test3);
+    println((Int*) test4);
+
+    println('-');
+    var test5 = Test(8);
+    println(&test5);
+    println(test5.a);
+    println(test5.b);
+    println(test5.c);
+    
+    var test6 = Test(8);
+    println(&test6);
+    println(test6.a);
+    println(test6.b);
+    println(test6.c);
+    
+}

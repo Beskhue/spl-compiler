@@ -1,0 +1,16 @@
+#include "stdlib/std.spl"
+
+main() {
+    Int* a = malloc(524286);
+    Int* b = malloc(524286);
+    println(a);
+    println(b);
+    free(a);
+    a = malloc(524286);
+    println(a);
+    free(b);
+    b = malloc(524286);
+    println(b);
+    Int* c = malloc(524286);
+    println(c);
+}

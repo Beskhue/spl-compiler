@@ -4,7 +4,7 @@ test () { return g; }
 test2 (b) { var a = test() + b; }
 */
 
-/*
+
 f1() { return f2(); }
 f2() { return f1(); }
 
@@ -12,10 +12,12 @@ g1() { return g2(); }
 g2() { return 1; }
 
 h() { return 'a'; }
-*/
 
+
+/*
 f1() { return 1; }
 f2() { return f1(); }
+*/
 
 /*
 f() { return f(); } 

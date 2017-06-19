@@ -1,10 +1,13 @@
+#include "stdlib/std.spl"
+
 // Output the Fibonacci sequence
-main () {
+main ()
+{
     var t1 = 0;
     var t2 = 1;
 
-    while(True) {
-        print(t2);
+    while (True) {
+        println(t2);
         var h = t1 + t2;
         t1 = t2;
         t2 = h;

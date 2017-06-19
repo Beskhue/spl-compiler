@@ -1,0 +1,13 @@
+f(i) :: a -> a
+{
+    return 5 : i;
+}
+
+g(i) :: a -> a
+{
+    return i + 1;
+}
+
+main() {
+
+}

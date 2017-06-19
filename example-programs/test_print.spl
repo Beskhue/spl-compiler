@@ -1,9 +1,10 @@
-test ()
-{
-    print(1 == 2);
-}
-
 main ()
 {
-    test();
+    print(5);
+    //print('\n');
+    print(True);
+    //print('\n');
+    print(False);
+    //print('\n');
+    print((1,2));
 }

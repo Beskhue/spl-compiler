@@ -1,0 +1,11 @@
+#include "stdlib/std.spl"
+
+var g = 42;
+
+main() {
+    var ptr = new g;
+    
+    println(ptr);
+    println(*ptr);
+    
+}

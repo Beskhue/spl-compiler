@@ -10,6 +10,6 @@ f2 (x) {
     return f1(f1(x));
 }
 
-f3 (x) {
-    return f2(f2(x));
+main () {
+    print(f2(1));
 }

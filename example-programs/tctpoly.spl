@@ -1,3 +1,5 @@
+var x = 0;
+
 eq (x, y) {
     var a = True;
     {
@@ -10,11 +12,13 @@ sum (x, y) {
     return x + y;
 }
 
-add1 () {
-    return x + 1;
+getX () {
+    return x;
 }
 
-var x = add1();
-var a = eq(1, 2);
-var b = eq(True : [], c : []);
-var c = eq('m', 'n');
+
+main() {
+    var a = eq(1, 2);
+    var b = eq('m', 'n');
+    var c = eq(True : [], b : []);
+}

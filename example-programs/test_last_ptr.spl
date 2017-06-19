@@ -1,0 +1,15 @@
+desc(x) { 
+    *x = (*x).tl;
+}
+
+descLast(x) {
+    while(!isEmpty(x.tl)) {
+        desc(&x); 
+    }
+    
+    return x.hd;
+}
+
+main() {
+    print(descLast(1 : 2 : 3 : 4 : []));
+}

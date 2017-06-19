@@ -1,0 +1,109 @@
+#include "stdlib/std.spl"
+
+Count
+{ 
+    var count;
+    
+    __init__(self, n) :: Count* Int -> Void {
+        self->count = n;
+    }
+    
+    __copy__(self, other) :: Count* Count* -> Void {
+        self->count = other->count;
+    }
+    
+    __destruct__(self) :: Count* -> Void {
+    }
+    
+    increment(self) :: Count* -> Void {
+        self->count = self->count + 1;
+    }
+    
+    decrement(self) :: Count* -> Int {
+        self->count = self->count - 1;
+        return self->count;
+    }
+}
+
+SP
+{
+    var p;
+    
+    __init__(self, p) :: SP* d* -> Void {
+        self->p = p;
+    }
+    
+    __copy__(self, other) :: SP* SP* -> Void {
+        self->p = other->p;
+    }
+    
+    __destruct__(self) :: SP* -> Void {
+        print('s');
+        print('p');
+        println('!');
+        {
+            delete self->p;
+        }
+    }
+}
+
+Vehicle
+{
+    var nWheels;
+    var nWindows;
+    var enginePower;
+
+    __init__(self, nWheels, nWindows, enginePower) :: Vehicle* a b c -> Void {
+        self->nWheels = nWheels;
+        self->nWindows = nWindows;
+        self->enginePower = enginePower;
+    }
+    
+    __copy__(self, other) :: Vehicle* Vehicle* -> Void {
+        println(self);
+        println(other);
+        print('c');
+        println('!');
+        self->nWheels = other->nWheels;
+        self->nWindows = other->nWindows;
+        self->enginePower = other->enginePower;
+    }
+    
+    __destruct__(self) :: Vehicle* -> Void {
+        println('d');
+    }
+    
+    print(self) :: Vehicle* -> Void {
+        println(self->nWheels);
+        println(self->nWindows);
+        println(self->enginePower);
+    }
+    
+}
+
+/*
+test(p) :: SP -> Void
+{
+    ((Vehicle*) p.p)->print();
+}
+*/
+
+main()
+{
+    var p = SP(new Vehicle(4, 6, 250));
+    {
+        var p2 = p;
+        {
+            //(p2.p)->print();
+            println('-');
+            //test(p2);
+        }
+        
+    }
+    
+    var p3 = SP(new Count(5));
+    //var p3 = new Count(5);
+    //var p3 = SP(&p);
+    //var p2 = SP(new Count(10));
+    
+}
