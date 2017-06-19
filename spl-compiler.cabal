@@ -19,6 +19,7 @@ library
                      , Data.Pos
                      , Data.Token
                      , Data.AST
+                     , Data.Type
                      , Data.NFA
                      , Data.Stack
                      , Text.Regex.Thompson
