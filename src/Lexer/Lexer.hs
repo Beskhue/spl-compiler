@@ -130,6 +130,7 @@ escapeChar :: Char -> Char
 escapeChar 'r' = '\r'
 escapeChar 'n' = '\n'
 escapeChar 't' = '\t'
+escapeChar '\'' = '\''
 
 {-
 Recognize an input string. Uses all input recognizers on the input string.
