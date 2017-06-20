@@ -1,5 +1,6 @@
 #include "stdlib/std.spl"
 
+/*
 Count
 { 
     var count;
@@ -53,6 +54,7 @@ SP
         }
     }
 }
+*/
 
 Vehicle
 {

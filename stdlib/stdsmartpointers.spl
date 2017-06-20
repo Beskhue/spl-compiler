@@ -1,10 +1,8 @@
-
-/*
 Count { 
-    var count;
+    Int count;
     
-    __init__(self) :: Count* -> Void {
-        self->count = 0;
+    __init__(self, n) :: Count* Int -> Void {
+        self->count = n;
     }
     
     __copy__(self, other) :: Count* Count* -> Void {
@@ -26,10 +24,10 @@ Count {
 
 SP {
     Count* count;
-    a* p;
+    dataType* p;
     
-    __init__(self, p) :: SP* a* -> Void {
-        self->count = new Count();
+    __init__(self, p) :: SP* dataType* -> Void {
+        self->count = new Count(1);
         self->p = p;
     }
     
@@ -48,6 +46,3 @@ SP {
         }
     }
 }
-*/
-
-var g = 1;
