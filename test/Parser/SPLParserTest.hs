@@ -8,13 +8,19 @@ import qualified Lexer.Lexer as Lexer
 import qualified Parser.SPLParser as SPLParser
 
 parse = SPLParser.parse . Lexer.lexDet "test"
-parseDet = SPLParser.parseDet . Lexer.lexDet "test"
+parseDet file = SPLParser.parseDet . Lexer.lexDet file
+parseDetTest = parseDet "test"
+
+checkFileRoundTrip file = do
+    rawSPL <- Lib.readUTF8File file
+    let parser = parseDet file in
+        parser rawSPL `shouldSatisfy` astEq (parser $ prettyPrint $ parser rawSPL)
 
 spec_SPLParser :: Spec
 spec_SPLParser =
     describe "SPLParser.parse" $ do
         it "parses a variable declaration" $
-            parseDet "Int a = 5;" `shouldSatisfy` astEq [
+            parseDetTest "Int a = 5;" `shouldSatisfy` astEq [
                 (DeclV
                     (VarDeclTyped
                         (TypeInt, emptyMeta)
@@ -25,32 +31,19 @@ spec_SPLParser =
                         emptyMeta), emptyMeta)
             ]
         it "parses left associativity" $
-            prettyPrint (parseDet "Int n3 = ((((1 - 2) + 3) - 4) + 5) - 6;") `shouldBe` "Int n3 = 1 - 2 + 3 - 4 + 5 - 6;"
+            prettyPrint (parseDetTest "Int n3 = ((((1 - 2) + 3) - 4) + 5) - 6;") `shouldBe` "Int n3 = 1 - 2 + 3 - 4 + 5 - 6;"
         it "programs survive a parse -> pretty print round trip" $ do
-            rawSPL <- Lib.readUTF8File "example-programs/fac.spl"
-            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/tuple_increment.spl"
-            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/precedence_assoc.spl"
-            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/last.spl"
-            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/length.spl"
-            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/concat.spl"
-            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/fib.spl"
-            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/precedence_parentheses.spl"
-            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/ugly_style.spl"
-            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/scopes.spl"
-            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/tctstatements.spl"
-            parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
+            checkFileRoundTrip "example-programs/fac.spl"
+            checkFileRoundTrip "example-programs/tuple_increment.spl"
+            checkFileRoundTrip "example-programs/precedence_assoc.spl"
+            checkFileRoundTrip "example-programs/last.spl"
+            checkFileRoundTrip "example-programs/length.spl"
+            checkFileRoundTrip "example-programs/concat.spl"
+            checkFileRoundTrip "example-programs/fib.spl"
+            checkFileRoundTrip "example-programs/precedence_parentheses.spl"
+            checkFileRoundTrip "example-programs/ugly_style.spl"
+            checkFileRoundTrip "example-programs/scopes.spl"
+            checkFileRoundTrip "example-programs/tctstatements.spl"
             -- Todo: fix UTF8 output of prettyPrint
-            --rawSPL <- Lib.readUTF8File "example-programs/unicode.spl"
-            --parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
-            --rawSPL <- readFile "example-programs/performance_test_parentheses.spl"
-            --parseDet rawSPL `shouldSatisfy` astEq (parseDet (prettyPrint (parseDet rawSPL)))
+            --checkFileRoundTrip "example-programs/unicode.spl"
+            --checkFileRoundTrip "example-programs/performance_test_parentheses.spl"
