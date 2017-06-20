@@ -9,7 +9,12 @@ import qualified Lexer.Lexer as Lexer
 import TypeSystem.Checker as Checker
 import qualified Data.Type as Type
 
-parseAndCheckDet = Checker.checkDet True Checker.emptyCtx . SPLParser.parseDet . Lexer.lexDet "test"
+parseAndCheckDet file = Checker.checkDet True Checker.emptyCtx . SPLParser.parseDet . Lexer.lexDet file
+
+checkFileRoundTrip file = do
+    rawSPL <- Lib.readUTF8File file
+    let checker = parseAndCheckDet file in
+        checker rawSPL `shouldSatisfy` astEq (checker $ prettyPrint $ checker rawSPL)
 
 expr = SPLParser.parseDet' SPLParser.pExpression . Lexer.lexDet "test"
 onlyTypeEmptyTInfExpr = Checker.typeInferenceExpr Checker.tInfExprTyped
@@ -38,39 +43,21 @@ spec_Checker = do
             onlyTypeEmptyTInfExpr (expr  "'a' + 'b';") `shouldSatisfy` isLeft
     describe "Checker.check" $
         it "Programs survive a parse -> type check -> pretty print -> parse -> type check round trip" $ do
-            rawSPL <- Lib.readUTF8File "example-programs/fac.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            --rawSPL <- Lib.readUTF8File "example-programs/tuple_increment.spl"
-            --parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/precedence_assoc.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/last.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/length.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/concat.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/fib.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/precedence_parentheses.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/ugly_style.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/scopes.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/tct.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/tcthard.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/tctpoly.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/tctpolywithinfun.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/tctstatements.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/tctpolyreturn.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/tctfields.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
-            rawSPL <- Lib.readUTF8File "example-programs/tctannotated.spl"
-            parseAndCheckDet rawSPL `shouldSatisfy` astEq (parseAndCheckDet (prettyPrint (parseAndCheckDet rawSPL)))
+            checkFileRoundTrip "example-programs/fac.spl"
+            --parseAndCheckDet "example-programs/tuple_increment.spl"
+            checkFileRoundTrip "example-programs/precedence_assoc.spl"
+            checkFileRoundTrip "example-programs/last.spl"
+            checkFileRoundTrip "example-programs/length.spl"
+            checkFileRoundTrip "example-programs/concat.spl"
+            checkFileRoundTrip "example-programs/fib.spl"
+            checkFileRoundTrip "example-programs/precedence_parentheses.spl"
+            checkFileRoundTrip "example-programs/ugly_style.spl"
+            checkFileRoundTrip "example-programs/scopes.spl"
+            checkFileRoundTrip "example-programs/tct.spl"
+            checkFileRoundTrip "example-programs/tcthard.spl"
+            checkFileRoundTrip "example-programs/tctpoly.spl"
+            checkFileRoundTrip "example-programs/tctpolywithinfun.spl"
+            checkFileRoundTrip "example-programs/tctstatements.spl"
+            checkFileRoundTrip "example-programs/tctpolyreturn.spl"
+            checkFileRoundTrip "example-programs/tctfields.spl"
+            checkFileRoundTrip "example-programs/tctannotated.spl"
