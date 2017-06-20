@@ -53,10 +53,10 @@ checkDet preserveDeclOrder includedCtx spl =
 
 ------------------------------------------------------------------------------------------------------------------------
 
-typeInferenceExpr :: (AST.Expression -> TInf Type) -> AST.Expression -> Either TInfError Type
+typeInferenceExpr :: (Type -> AST.Expression -> TInf Type) -> AST.Expression -> Either TInfError Type
 typeInferenceExpr tInf' expr = res
     where
-        (res, _) = runTInf $ tInf' expr
+        (res, _) = runTInf $ (tInf' $ TVar "a") expr
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -245,8 +245,10 @@ data TInfError' = TInfErrorUnify Type Type
                 | TInfErrorPersistentValueRequired
                 | TInfErrorCannotInferClass
                 | TInfErrorGeneric String
+                  deriving (Eq)
 
 data TInfError = TInfError TInfError' Pos.Pos
+                 deriving (Eq)
 
 instance Show TInfError where
     show (TInfError err pos) = show err ++ " at " ++ show pos

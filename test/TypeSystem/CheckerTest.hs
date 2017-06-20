@@ -9,7 +9,7 @@ import qualified Lexer.Lexer as Lexer
 import TypeSystem.Checker as Checker
 import qualified Data.Type as Type
 
-parseAndCheckDet = fst . Checker.checkDet True Checker.emptyCtx . SPLParser.parseDet . Lexer.lexDet "test"
+parseAndCheckDet = Checker.checkDet True Checker.emptyCtx . SPLParser.parseDet . Lexer.lexDet "test"
 
 expr = SPLParser.parseDet' SPLParser.pExpression . Lexer.lexDet "test"
 onlyTypeEmptyTInfExpr = Checker.typeInferenceExpr Checker.tInfExprTyped
