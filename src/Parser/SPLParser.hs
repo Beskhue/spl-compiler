@@ -307,34 +307,34 @@ pStatementDelete = (do
 
 pExpression :: Parser AST.Expression
 pExpression = do
-    expr@(_, m) <- pExpression' 1
-    t <- pPeek
-    case t of
-        (TPunctuator PParenOpen) -> do
-            tok (TPunctuator PParenOpen)
-            args <- pFunArgs
-            tok (TPunctuator PParenClose) <?> "closing function call parenthesis"
-            case expr of
-                (AST.ExprClassMember (AST.ExprUnaryOp (AST.UnaryOpDereference, _) e, _) i, m') -> return (AST.ExprFunCall expr (e : args), m)
-                _ -> return (AST.ExprFunCall expr args, m)
-        _ -> return expr
+    pExpression' 1
     where
         pExpression' :: Int -> Parser AST.Expression
         pExpression' 9          = pExprBase
         pExpression' precedence = do {
-            (expr, m) <- pExpression' (precedence + 1); (do
+            expr@(_, m) <- pExpression' (precedence + 1); (do
                 binaryOperator <- try (lookAhead pBinaryOperator)
                 if AST.binaryOperatorPrecedence binaryOperator == precedence
                     then
                         case AST.binaryOperatorAssociativity binaryOperator of
                             AST.ALeft -> -- Left associativity
-                                pLeftAssocExpression (expr, m) precedence
+                                pLeftAssocExpression expr precedence
                             AST.ARight -> do -- Right associativity
                                 pBinaryOperator -- Consume binary operator
                                 expr' <- pExpression' precedence
-                                return (AST.ExprBinaryOp binaryOperator (expr, m) expr', m)
-                    else return (expr, m)
-            ) <|> return (expr, m)}
+                                return (AST.ExprBinaryOp binaryOperator expr expr', m)
+                    else return expr
+            ) <|> (do
+                t <- pPeek
+                case t of
+                    (TPunctuator PParenOpen) -> do
+                        tok (TPunctuator PParenOpen)
+                        args <- pFunArgs
+                        tok (TPunctuator PParenClose) <?> "closing function call parenthesis"
+                        case expr of
+                            (AST.ExprClassMember (AST.ExprUnaryOp (AST.UnaryOpDereference, _) e, _) i, m') -> return (AST.ExprFunCall expr (e : args), m)
+                            _ -> return (AST.ExprFunCall expr args, m)
+                    _ -> return expr)}
         pLeftAssocExpression :: AST.Expression -> Int -> Parser AST.Expression
         pLeftAssocExpression (e1, m) precedence = do {
                 bOp <- try (lookAhead pBinaryOperator);
