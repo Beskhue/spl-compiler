@@ -9,4 +9,6 @@ import qualified Parser.SPLParser as SPLParser
 import qualified TypeSystem.Checker as Checker
 
 main :: IO ()
-main = compile
+main = do
+    putStrLn "splc 0.1.0.0"
+    compile
