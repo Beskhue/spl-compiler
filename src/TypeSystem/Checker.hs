@@ -481,7 +481,9 @@ tInfExpr t (AST.ExprFunCall e@(_, m') args, m) = do
             tInfExpr (TFunction ts t) e
             tInfExprs ts args
         _ -> throwError $ TInfError TInfErrorPersistentValueRequired (AST.metaPos m)
-tInfExpr t (AST.ExprConstant const, _) = tInfConst t const
+tInfExpr t (AST.ExprConstant const, m) = do
+    metaMGU m t
+    tInfConst t const
 tInfExpr t (AST.ExprTuple e1 e2, m) = do
     t1 <- newTypeVar "tuple"
     t2 <- newTypeVar "tuple"
