@@ -260,7 +260,7 @@ instance Show TInfError' where
         ++ AST.prettyPrint (translateType AST.emptyMeta t2)
     show (TInfErrorOccursCheck s t) = "Free type variable "
         ++ s
-        ++ "occurs in "
+        ++ " occurs in "
         ++ AST.prettyPrint (translateType AST.emptyMeta t)
     show (TInfErrorExpectedTypeUnify t1 t2) = "Given type and inferred type are not the same. Given: "
         ++ AST.prettyPrint (translateType AST.emptyMeta t1)
